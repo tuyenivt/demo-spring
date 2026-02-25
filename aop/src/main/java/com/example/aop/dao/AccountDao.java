@@ -41,6 +41,11 @@ public class AccountDao {
         throw new RuntimeException("not allowed delete any account");
     }
 
+    @RequiresRole("ADMIN")
+    public void deleteSafely(int id) {
+        // no-op for demo
+    }
+
     /**
      * Simulates an expensive lookup. First call is slow; subsequent calls
      * return instantly from cache thanks to the @SimpleCache aspect.
