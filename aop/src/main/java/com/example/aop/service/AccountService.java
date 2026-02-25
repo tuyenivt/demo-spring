@@ -2,7 +2,9 @@ package com.example.aop.service;
 
 import com.example.aop.aspect.ExecutionLogging;
 import com.example.aop.aspect.MonitorPerformance;
+import com.example.aop.aspect.audit.Audited;
 import com.example.aop.aspect.feature.FeatureEnabled;
+import com.example.aop.aspect.metrics.Timed;
 import com.example.aop.aspect.validation.Max;
 import com.example.aop.aspect.validation.Min;
 import com.example.aop.aspect.validation.NotNull;
@@ -51,16 +53,25 @@ public class AccountService {
         accountDao.delete(id);
     }
 
+    @ExecutionLogging
+    @Audited(action = "CREATE", entity = "Account")
+    public Account createAccount(String name) {
+        return accountDao.create(name);
+    }
+
     @ValidateArgs
+    @MonitorPerformance(thresholdMs = 300)
+    @Timed(name = "account.get-by-id")
     public Account getAccountById(@NotNull @Min(1) @Max(100_000) Integer id) {
         return accountDao.slowFindById(id);
     }
 
-    public Account getRateLimitedAccount(@NotNull @Min(1) Integer id) {
-        return accountDao.slowFindById(id);
+    public Account getAccountWithRetry(int id) {
+        return accountDao.fetchWithRetry(id);
     }
 
     @FeatureEnabled("new-pricing-algorithm")
+    @Timed(name = "pricing.calculate")
     public BigDecimal calculatePrice(int amountCents) {
         return BigDecimal.valueOf(amountCents).movePointLeft(2).multiply(new BigDecimal("0.90"));
     }
