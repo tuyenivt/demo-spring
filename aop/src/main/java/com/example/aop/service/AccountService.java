@@ -3,6 +3,10 @@ package com.example.aop.service;
 import com.example.aop.aspect.ExecutionLogging;
 import com.example.aop.aspect.MonitorPerformance;
 import com.example.aop.aspect.feature.FeatureEnabled;
+import com.example.aop.aspect.validation.Max;
+import com.example.aop.aspect.validation.Min;
+import com.example.aop.aspect.validation.NotNull;
+import com.example.aop.aspect.validation.ValidateArgs;
 import com.example.aop.dao.AccountDao;
 import com.example.aop.entity.Account;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +49,15 @@ public class AccountService {
 
     public void deleteAccount(int id) {
         accountDao.delete(id);
+    }
+
+    @ValidateArgs
+    public Account getAccountById(@NotNull @Min(1) @Max(100_000) Integer id) {
+        return accountDao.slowFindById(id);
+    }
+
+    public Account getRateLimitedAccount(@NotNull @Min(1) Integer id) {
+        return accountDao.slowFindById(id);
     }
 
     @FeatureEnabled("new-pricing-algorithm")

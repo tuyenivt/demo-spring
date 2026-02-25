@@ -3,6 +3,9 @@ package com.example.aop.dao;
 import com.example.aop.aspect.auth.RequiresRole;
 import com.example.aop.aspect.cache.SimpleCache;
 import com.example.aop.aspect.retry.Retryable;
+import com.example.aop.aspect.validation.Min;
+import com.example.aop.aspect.validation.NotNull;
+import com.example.aop.aspect.validation.ValidateArgs;
 import com.example.aop.entity.Account;
 import org.springframework.stereotype.Repository;
 
@@ -35,8 +38,9 @@ public class AccountDao {
      * Simulates an expensive lookup. First call is slow; subsequent calls
      * return instantly from cache thanks to the @SimpleCache aspect.
      */
+    @ValidateArgs
     @SimpleCache
-    public Account slowFindById(int id) {
+    public Account slowFindById(@NotNull @Min(1) Integer id) {
         try {
             Thread.sleep(500); // simulate expensive operation
         } catch (InterruptedException e) {
