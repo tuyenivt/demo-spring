@@ -2,12 +2,14 @@ package com.example.aop.service;
 
 import com.example.aop.aspect.ExecutionLogging;
 import com.example.aop.aspect.MonitorPerformance;
+import com.example.aop.aspect.feature.FeatureEnabled;
 import com.example.aop.dao.AccountDao;
 import com.example.aop.entity.Account;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Slf4j
@@ -43,6 +45,11 @@ public class AccountService {
 
     public void deleteAccount(int id) {
         accountDao.delete(id);
+    }
+
+    @FeatureEnabled("new-pricing-algorithm")
+    public BigDecimal calculatePrice(int amountCents) {
+        return BigDecimal.valueOf(amountCents).movePointLeft(2).multiply(new BigDecimal("0.90"));
     }
 
     /**
