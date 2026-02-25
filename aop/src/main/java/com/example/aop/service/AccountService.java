@@ -5,6 +5,7 @@ import com.example.aop.aspect.MonitorPerformance;
 import com.example.aop.aspect.audit.Audited;
 import com.example.aop.aspect.feature.FeatureEnabled;
 import com.example.aop.aspect.metrics.Timed;
+import com.example.aop.aspect.ratelimit.RateLimited;
 import com.example.aop.aspect.validation.Max;
 import com.example.aop.aspect.validation.Min;
 import com.example.aop.aspect.validation.NotNull;
@@ -64,6 +65,16 @@ public class AccountService {
     @Timed(name = "account.get-by-id")
     public Account getAccountById(@NotNull @Min(1) @Max(100_000) Integer id) {
         return accountDao.slowFindById(id);
+    }
+
+    @RateLimited(requestsPerSecond = 2)
+    public Account getRateLimitedAccount(@NotNull @Min(1) Integer id) {
+        return accountDao.slowFindById(id);
+    }
+
+    @RateLimited(requestsPerSecond = 2)
+    public String rateLimitedPing() {
+        return "pong";
     }
 
     public Account getAccountWithRetry(int id) {

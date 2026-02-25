@@ -34,6 +34,11 @@ public class AccountController {
         return accountService.getAccountWithRetry(id);
     }
 
+    @GetMapping("/accounts/rate-limited/{id}")
+    public Account getRateLimitedAccount(@PathVariable Integer id) {
+        return accountService.getRateLimitedAccount(id);
+    }
+
     @GetMapping("/batch")
     public void processBatch(@RequestParam int factor) throws InterruptedException {
         accountService.processBatch(factor);
