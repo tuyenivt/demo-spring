@@ -9,6 +9,7 @@ import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,6 +41,7 @@ class UserServiceTest {
 
         // Then
         verify(listOperations).rightPush("user:activities:user123", "Logged in");
+        verify(listOperations).trim("user:activities:user123", -100, -1);
         verify(redisTemplate).expire("user:activities:user123", Duration.ofDays(7));
     }
 
@@ -115,6 +117,42 @@ class UserServiceTest {
     void getOldestUserActivity_shouldThrowException_whenUserIdIsBlank() {
         // When / Then
         assertThatThrownBy(() -> userService.getOldestUserActivity(""))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("userId cannot be null or blank");
+    }
+
+    @Test
+    void getUserActivities_shouldReturnActivities() {
+        // Given
+        when(redisTemplate.opsForList()).thenReturn(listOperations);
+        when(listOperations.range("user:activities:user123", 0, -1))
+                .thenReturn(List.of("Logged in", "Viewed dashboard"));
+
+        // When
+        List<String> result = userService.getUserActivities("user123");
+
+        // Then
+        assertThat(result).containsExactly("Logged in", "Viewed dashboard");
+        verify(listOperations).range("user:activities:user123", 0, -1);
+    }
+
+    @Test
+    void getUserActivities_shouldReturnEmptyList_whenNoActivity() {
+        // Given
+        when(redisTemplate.opsForList()).thenReturn(listOperations);
+        when(listOperations.range("user:activities:user123", 0, -1)).thenReturn(null);
+
+        // When
+        List<String> result = userService.getUserActivities("user123");
+
+        // Then
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void getUserActivities_shouldThrowException_whenUserIdIsBlank() {
+        // When / Then
+        assertThatThrownBy(() -> userService.getUserActivities(""))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("userId cannot be null or blank");
     }
