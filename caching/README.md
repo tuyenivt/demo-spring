@@ -5,14 +5,16 @@ A comprehensive demonstration of Redis caching patterns in Spring Boot, showcasi
 ## Features
 
 - **Service-Layer Caching** - Cache annotations at service layer for better separation of concerns
-- **Cache-Aside Pattern** - Automatic fallback to database when Redis is unavailable
+- **Cache Error Handling** - Framework-level cache error handler logs Redis failures and continues with DB path
 - **TTL Configuration** - Per-cache expiration times with JSON serialization
 - **Connection Pooling** - Lettuce pool for efficient Redis connections
 - **Cache Statistics** - Monitor cache performance via Actuator
 - **Resilient Cache Warming** - Pre-populate cache on startup with error handling
 - **Manual Cache Operations** - REST API for cache management
+- **Product CRUD Completeness** - Includes delete endpoint with cache eviction
+- **Pagination Support** - Paginated list/search APIs for controlled payload sizes
 - **Pub/Sub Messaging** - Redis publish/subscribe demonstration
-- **Activity Tracking with TTL** - Redis list operations with automatic 7-day expiration
+- **Activity Tracking with TTL** - Redis list operations with automatic 7-day expiration and list trimming
 - **DTO Pattern** - Clean API contract separated from database schema
 - **Input Validation** - Jakarta Bean Validation on all inputs
 - **OpenAPI Documentation** - Interactive API docs via Swagger UI
@@ -62,8 +64,11 @@ curl -X POST http://localhost:8080/api/products -H "Content-Type: application/js
 curl http://localhost:8080/api/products/1
 curl http://localhost:8080/api/products/1  # faster - from cache
 
-# Search products by name (cached result)
-curl "http://localhost:8080/api/products/search?name=Widget"
+# List products (paginated)
+curl "http://localhost:8080/api/products?page=0&size=20&sort=productId,asc"
+
+# Search products by name (paginated)
+curl "http://localhost:8080/api/products/search?name=Widget&page=0&size=20&sort=updatedAt,desc"
 
 # Update product (evicts cache and returns 404 if not found)
 curl -X PUT http://localhost:8080/api/products/1 -H "Content-Type: application/json" -d '{
@@ -76,6 +81,9 @@ curl -X PUT http://localhost:8080/api/products/1 -H "Content-Type: application/j
 
 # Try to update non-existent product (returns 404)
 curl -X PUT http://localhost:8080/api/products/999 -H "Content-Type: application/json" -d '{...}'
+
+# Delete product (evicts caches, returns 204)
+curl -X DELETE http://localhost:8080/api/products/1
 ```
 
 ### Cache Management
@@ -83,6 +91,9 @@ curl -X PUT http://localhost:8080/api/products/999 -H "Content-Type: application
 ```bash
 # List all cache names
 curl http://localhost:8080/api/cache/names
+
+# Get cache stats
+curl http://localhost:8080/api/cache/stats
 
 # Clear a specific cache
 curl -X DELETE http://localhost:8080/api/cache/product
@@ -110,6 +121,9 @@ curl -X POST http://localhost:8080/api/users/user123/activities -H "Content-Type
 # Add multiple activities
 curl -X POST http://localhost:8080/api/users/user123/activities -H "Content-Type: text/plain" -d "Viewed dashboard"
 curl -X POST http://localhost:8080/api/users/user123/activities -H "Content-Type: text/plain" -d "Updated profile"
+
+# Read all activities (non-destructive)
+curl http://localhost:8080/api/users/user123/activities
 
 # Get oldest activity (FIFO)
 curl http://localhost:8080/api/users/user123/activities/oldest
@@ -161,7 +175,7 @@ curl http://localhost:8080/actuator/metrics
 3. ProductService tries to read from cache (via `@Cacheable`)
 4. On cache hit: return cached data immediately
 5. On cache miss: fetch from DB via `ProductRepository`, cache it, return data
-6. On cache error (`DataAccessException`): fallback to direct DB access with warning log
+6. On cache error: `CacheErrorHandler` logs and ignores cache failure so method executes against DB
 7. On save: update/evict caches appropriately based on business rules
 
 ### Testing
@@ -172,12 +186,14 @@ Run all tests:
 ```
 
 Test coverage includes:
-- **ProductServiceTest** - Unit tests for caching logic and fallback behavior
+- **ProductServiceTest** - Unit tests for caching logic, pagination methods, and delete behavior
 - **UserServiceTest** - Unit tests for Redis list operations and validation
 - **ProductControllerTest** - @WebMvcTest for REST endpoints with validation
 - **CacheControllerTest** - @WebMvcTest for cache management endpoints
+- **UserActivityControllerTest** - @WebMvcTest for non-destructive activity retrieval
+- **ProductCachingIntegrationTest** - @SpringBootTest + Testcontainers for end-to-end cache verification
 
-All tests run without Docker/Redis/MySQL using Mockito for fast, isolated testing.
+Most tests run without Docker/Redis/MySQL using Mockito for fast, isolated testing. The integration test uses Testcontainers.
 
 ## Connection Pooling
 
