@@ -13,6 +13,8 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -113,17 +116,32 @@ class ProductControllerTest {
     @Test
     void searchByName_shouldReturnProducts() throws Exception {
         // Given
-        when(productService.findByProductNameOrderByUpdatedAtDesc("Test"))
-                .thenReturn(List.of(testProduct));
+        when(productService.findByProductName(eq("Test"), any()))
+                .thenReturn(new PageImpl<>(List.of(testProduct), PageRequest.of(0, 20), 1));
         when(productMapper.toResponse(testProduct)).thenReturn(testProductResponse);
 
         // When / Then
         mockMvc.perform(get("/api/products/search")
                         .param("name", "Test"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].productName").value("Test Product"));
+                .andExpect(jsonPath("$.content[0].productName").value("Test Product"));
 
-        verify(productService, times(1)).findByProductNameOrderByUpdatedAtDesc("Test");
+        verify(productService, times(1)).findByProductName(eq("Test"), any());
+    }
+
+    @Test
+    void list_shouldReturnProducts() throws Exception {
+        // Given
+        when(productService.findAll(any()))
+                .thenReturn(new PageImpl<>(List.of(testProduct), PageRequest.of(0, 20), 1));
+        when(productMapper.toResponse(testProduct)).thenReturn(testProductResponse);
+
+        // When / Then
+        mockMvc.perform(get("/api/products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].productName").value("Test Product"));
+
+        verify(productService, times(1)).findAll(any());
     }
 
     @Test
@@ -223,5 +241,31 @@ class ProductControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(testProductRequest)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void delete_shouldReturn204_whenProductExists() throws Exception {
+        // Given
+        when(productService.findById(1L)).thenReturn(Optional.of(testProduct));
+
+        // When / Then
+        mockMvc.perform(delete("/api/products/1"))
+                .andExpect(status().isNoContent());
+
+        verify(productService, times(1)).findById(1L);
+        verify(productService, times(1)).delete(testProduct);
+    }
+
+    @Test
+    void delete_shouldReturn404_whenProductNotFound() throws Exception {
+        // Given
+        when(productService.findById(anyLong())).thenReturn(Optional.empty());
+
+        // When / Then
+        mockMvc.perform(delete("/api/products/999"))
+                .andExpect(status().isNotFound());
+
+        verify(productService, times(1)).findById(999L);
+        verify(productService, never()).delete(any());
     }
 }

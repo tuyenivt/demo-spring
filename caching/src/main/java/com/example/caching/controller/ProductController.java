@@ -11,12 +11,14 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/products")
@@ -41,13 +43,20 @@ public class ProductController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    @Operation(summary = "Search products by name", description = "Search products by name, sorted by updated date descending. Results are cached.")
-    @ApiResponse(responseCode = "200", description = "List of products matching the name")
+    @Operation(summary = "List products", description = "Retrieve all products with pagination.")
+    @ApiResponse(responseCode = "200", description = "Paginated list of products")
+    @GetMapping
+    public Page<ProductResponse> list(@PageableDefault(size = 20, sort = "productId") Pageable pageable) {
+        return productService.findAll(pageable).map(productMapper::toResponse);
+    }
+
+    @Operation(summary = "Search products by name", description = "Search products by name with pagination, sorted by updated date descending.")
+    @ApiResponse(responseCode = "200", description = "Paginated list of products matching the name")
     @GetMapping("/search")
-    public List<ProductResponse> searchByName(@RequestParam @NotBlank(message = "Name parameter is required") String name) {
-        return productService.findByProductNameOrderByUpdatedAtDesc(name).stream()
-                .map(productMapper::toResponse)
-                .toList();
+    public Page<ProductResponse> searchByName(
+            @RequestParam @NotBlank(message = "Name parameter is required") String name,
+            @PageableDefault(size = 20, sort = "updatedAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return productService.findByProductName(name, pageable).map(productMapper::toResponse);
     }
 
     @Operation(summary = "Create a new product", description = "Create a new product and update cache")
@@ -72,6 +81,21 @@ public class ProductController {
                     productMapper.updateEntity(existingProduct, request);
                     var updatedProduct = productService.save(existingProduct);
                     return ResponseEntity.ok(productMapper.toResponse(updatedProduct));
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @Operation(summary = "Delete a product", description = "Delete an existing product by ID and evict related cache entries.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Product deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Product not found")
+    })
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        return productService.findById(id)
+                .map(product -> {
+                    productService.delete(product);
+                    return ResponseEntity.noContent().<Void>build();
                 })
                 .orElse(ResponseEntity.notFound().build());
     }
