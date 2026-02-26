@@ -5,11 +5,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.data.redis.cache.RedisCache;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,6 +29,9 @@ class CacheControllerTest {
 
     @MockitoBean
     private Cache cache;
+
+    @MockitoBean
+    private RedisCache redisCache;
 
     @Test
     void getCacheNames_shouldReturnCacheNames() throws Exception {
@@ -92,5 +97,20 @@ class CacheControllerTest {
 
         verify(cacheManager, times(1)).getCache("nonexistent");
         verify(cache, never()).evict(anyString());
+    }
+
+    @Test
+    void getStats_shouldReturnRedisCacheStats() throws Exception {
+        // Given
+        when(cacheManager.getCacheNames()).thenReturn(List.of("product"));
+        when(cacheManager.getCache("product")).thenReturn(redisCache);
+
+        // When / Then
+        mockMvc.perform(get("/api/cache/stats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.product").value(nullValue()));
+
+        verify(cacheManager, times(1)).getCacheNames();
+        verify(cacheManager, times(1)).getCache("product");
     }
 }

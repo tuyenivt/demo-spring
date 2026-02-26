@@ -6,10 +6,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.CacheManager;
+import org.springframework.data.redis.cache.RedisCache;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/cache")
@@ -24,6 +27,20 @@ public class CacheController {
     @GetMapping("/names")
     public Collection<String> getCacheNames() {
         return cacheManager.getCacheNames();
+    }
+
+    @Operation(summary = "Get cache statistics", description = "Retrieve cache statistics for Redis caches")
+    @ApiResponse(responseCode = "200", description = "Cache statistics")
+    @GetMapping("/stats")
+    public Map<String, Object> getStats() {
+        var stats = new LinkedHashMap<String, Object>();
+        cacheManager.getCacheNames().forEach(name -> {
+            var cache = cacheManager.getCache(name);
+            if (cache instanceof RedisCache redisCache) {
+                stats.put(name, redisCache.getStatistics());
+            }
+        });
+        return stats;
     }
 
     @Operation(summary = "Clear entire cache", description = "Clear all entries from a specific cache")
