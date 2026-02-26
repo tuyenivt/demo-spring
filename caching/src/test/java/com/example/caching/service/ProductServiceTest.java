@@ -9,7 +9,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataAccessException;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
@@ -76,23 +78,6 @@ class ProductServiceTest {
     }
 
     @Test
-    void findById_shouldFallbackToDatabase_whenDataAccessExceptionOccurs() {
-        // Given
-        when(productRepository.findById(1L))
-                .thenThrow(new DataAccessException("Redis connection failed") {
-                })
-                .thenReturn(Optional.of(testProduct));
-
-        // When
-        Optional<Product> result = productService.findById(1L);
-
-        // Then
-        assertThat(result).isPresent();
-        assertThat(result.get().getProductId()).isEqualTo(1L);
-        verify(productRepository, times(2)).findById(1L);
-    }
-
-    @Test
     void findByProductNameOrderByUpdatedAtDesc_shouldReturnProducts() {
         // Given
         List<Product> products = List.of(testProduct);
@@ -109,21 +94,34 @@ class ProductServiceTest {
     }
 
     @Test
-    void findByProductNameOrderByUpdatedAtDesc_shouldFallbackToDatabase_whenDataAccessExceptionOccurs() {
+    void findByProductName_shouldReturnPage() {
         // Given
-        List<Product> products = List.of(testProduct);
-        when(productRepository.findByProductName(eq("Test"), any(Sort.class)))
-                .thenThrow(new DataAccessException("Redis connection failed") {
-                })
-                .thenReturn(products);
+        Pageable pageable = PageRequest.of(0, 20);
+        when(productRepository.findByProductNameContainingIgnoreCase("Test", pageable))
+                .thenReturn(new PageImpl<>(List.of(testProduct), pageable, 1));
 
         // When
-        List<Product> result = productService.findByProductNameOrderByUpdatedAtDesc("Test");
+        var result = productService.findByProductName("Test", pageable);
 
         // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getProductName()).isEqualTo("Test Product");
-        verify(productRepository, times(2)).findByProductName(eq("Test"), any(Sort.class));
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getProductName()).isEqualTo("Test Product");
+        verify(productRepository, times(1)).findByProductNameContainingIgnoreCase("Test", pageable);
+    }
+
+    @Test
+    void findAll_shouldReturnPage() {
+        // Given
+        Pageable pageable = PageRequest.of(0, 20);
+        when(productRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(testProduct), pageable, 1));
+
+        // When
+        var result = productService.findAll(pageable);
+
+        // Then
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getProductId()).isEqualTo(1L);
+        verify(productRepository, times(1)).findAll(pageable);
     }
 
     @Test
@@ -160,5 +158,14 @@ class ProductServiceTest {
         assertThat(result).isNotNull();
         assertThat(result.getPrice()).isEqualByComparingTo(new BigDecimal("39.99"));
         verify(productRepository, times(1)).save(testProduct);
+    }
+
+    @Test
+    void delete_shouldDeleteProduct() {
+        // When
+        productService.delete(testProduct);
+
+        // Then
+        verify(productRepository, times(1)).delete(testProduct);
     }
 }
