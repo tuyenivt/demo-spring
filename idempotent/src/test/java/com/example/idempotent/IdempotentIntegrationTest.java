@@ -14,6 +14,7 @@ import org.springframework.http.MediaType;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -67,9 +68,24 @@ class IdempotentIntegrationTest {
 
         // Duplicate request - should return same response (cached)
         var second = restTemplate.postForEntity("/api/demo/orders", entity, OrderResponse.class);
-        assertEquals(HttpStatus.OK, second.getStatusCode()); // Note: cached response returns 200
+        assertEquals(HttpStatus.CREATED, second.getStatusCode());
         assertNotNull(second.getBody());
         assertEquals(first.getBody().getOrderId(), second.getBody().getOrderId());
+    }
+
+    @Test
+    void shouldPreserveNoContentStatusOnDuplicateOrderCancelRequest() {
+        var idempotentKey = UUID.randomUUID().toString();
+        var headers = new HttpHeaders();
+        headers.set("Idempotent-Key", idempotentKey);
+
+        var entity = new HttpEntity<>(headers);
+
+        var first = restTemplate.exchange("/api/demo/orders/order-42", org.springframework.http.HttpMethod.DELETE, entity, Void.class);
+        assertEquals(HttpStatus.NO_CONTENT, first.getStatusCode());
+
+        var second = restTemplate.exchange("/api/demo/orders/order-42", org.springframework.http.HttpMethod.DELETE, entity, Void.class);
+        assertEquals(HttpStatus.NO_CONTENT, second.getStatusCode());
     }
 
     @Test
@@ -144,5 +160,70 @@ class IdempotentIntegrationTest {
         assertNotNull(replay.getBody());
         // Replay creates a new transaction
         assertNotEquals(first.getBody().getTransactionId(), replay.getBody().getTransactionId());
+    }
+
+    @Test
+    void shouldReturn400WhenIdempotentKeyHeaderIsMissing() {
+        var headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        var request = new PaymentRequest(new BigDecimal("10.00"), "USD", "No key");
+        var response = restTemplate.postForEntity("/api/demo/payments",
+                new HttpEntity<>(request, headers), ErrorResponse.class);
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals("INVALID_REQUEST", response.getBody().getCode());
+    }
+
+    @Test
+    void shouldAllowReplayForPreventRepeatedRequests() {
+        var idempotentKey = UUID.randomUUID().toString();
+
+        var headers = new HttpHeaders();
+        headers.set("Idempotent-Key", idempotentKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        var request = new SubscribeRequest("replay@example.com", "Replay User");
+        var entity = new HttpEntity<>(request, headers);
+
+        var first = restTemplate.postForEntity("/api/demo/subscriptions", entity, Void.class);
+        assertEquals(HttpStatus.OK, first.getStatusCode());
+
+        var second = restTemplate.postForEntity("/api/demo/subscriptions", entity, ErrorResponse.class);
+        assertEquals(HttpStatus.CONFLICT, second.getStatusCode());
+
+        var replayHeaders = new HttpHeaders();
+        replayHeaders.set("Idempotent-Key", idempotentKey);
+        replayHeaders.set("Idempotent-Replay", "true");
+        replayHeaders.setContentType(MediaType.APPLICATION_JSON);
+
+        var replay = restTemplate.postForEntity("/api/demo/subscriptions", new HttpEntity<>(request, replayHeaders), Void.class);
+        assertEquals(HttpStatus.OK, replay.getStatusCode());
+    }
+
+    @Test
+    void shouldReturn409WhenRequestInProgress() throws Exception {
+        var idempotentKey = UUID.randomUUID().toString();
+
+        var headers = new HttpHeaders();
+        headers.set("Idempotent-Key", idempotentKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        var request = new PaymentRequest(new BigDecimal("20.00"), "USD", "Slow request");
+        var entity = new HttpEntity<>(request, headers);
+
+        var firstCall = CompletableFuture.supplyAsync(() ->
+                restTemplate.postForEntity("/api/demo/payments/slow", entity, PaymentResponse.class));
+
+        Thread.sleep(200);
+
+        var secondCall = restTemplate.postForEntity("/api/demo/payments/slow", entity, ErrorResponse.class);
+        var firstResult = firstCall.get();
+
+        assertEquals(HttpStatus.OK, firstResult.getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, secondCall.getStatusCode());
+        assertNotNull(secondCall.getBody());
+        assertEquals("DUPLICATE_REQUEST", secondCall.getBody().getCode());
     }
 }

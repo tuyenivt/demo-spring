@@ -44,6 +44,7 @@ public class OrderDemoController {
     /**
      * Demo endpoint showing DELETE operation with @Idempotent.
      * Deleting the same resource twice should return success without error.
+     * Cached duplicate responses preserve the original 204 No Content status.
      */
     @DeleteMapping("/{orderId}")
     @Idempotent
