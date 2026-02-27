@@ -1,5 +1,6 @@
 package com.example.temporal.config;
 
+import com.example.temporal.activities.impl.NotificationActivitiesImpl;
 import com.example.temporal.activities.impl.OrderActivitiesImpl;
 import com.example.temporal.activities.impl.PaymentActivitiesImpl;
 import com.example.temporal.activities.impl.ReportActivitiesImpl;
@@ -112,7 +113,8 @@ public class TemporalConfig {
     public WorkerFactory workerFactory(WorkflowClient workflowClient,
                                        OrderActivitiesImpl orderActivities,
                                        PaymentActivitiesImpl paymentActivities,
-                                       ReportActivitiesImpl reportActivities) {
+                                       ReportActivitiesImpl reportActivities,
+                                       NotificationActivitiesImpl notificationActivities) {
         workerFactory = WorkerFactory.newInstance(workflowClient, WorkerFactoryOptions.newBuilder().setUsingVirtualWorkflowThreads(true).build());
 
         var workerOptions = WorkerOptions.newBuilder()
@@ -133,12 +135,13 @@ public class TemporalConfig {
                 InventoryChildWorkflowImpl.class,
                 ReportWorkflowImpl.class,
                 PollingWorkflowImpl.class,
-                ApprovalWorkflowImpl.class
+                ApprovalWorkflowImpl.class,
+                NotificationWorkflowImpl.class
         );
 
         // Register activity implementations
         // These perform actual I/O operations - can be non-deterministic
-        worker.registerActivitiesImplementations(orderActivities, paymentActivities, reportActivities);
+        worker.registerActivitiesImplementations(orderActivities, paymentActivities, reportActivities, notificationActivities);
 
         // Start all workers
         workerFactory.start();
