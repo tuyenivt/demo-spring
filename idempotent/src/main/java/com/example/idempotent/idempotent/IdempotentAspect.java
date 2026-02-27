@@ -115,7 +115,10 @@ public class IdempotentAspect {
                             timeUnit.name().toLowerCase() + ",",
                             "store result in 24h, please retry to get result if it's ready"));
                 }
-                // Wrap cached body back into ResponseEntity
+                if (keyVal instanceof CachedResponse cachedResponse) {
+                    return ResponseEntity.status(cachedResponse.getStatusCode()).body(cachedResponse.getBody());
+                }
+                // Backward compatibility for old cached body-only values.
                 return ResponseEntity.ok(keyVal);
             }
         }
@@ -133,10 +136,9 @@ public class IdempotentAspect {
         try {
             var result = joinPoint.proceed();
             log.debug("result: {}", result);
-            // Cache only the body, not the ResponseEntity wrapper
             var toCache = result;
             if (result instanceof ResponseEntity<?> re) {
-                toCache = re.getBody();
+                toCache = new CachedResponse(re.getStatusCode().value(), re.getBody());
             }
             redisTemplate.opsForValue().set(cacheKey, toCache, resultExpire, TimeUnit.MINUTES);
             return result;
