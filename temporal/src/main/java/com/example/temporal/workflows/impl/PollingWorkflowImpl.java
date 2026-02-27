@@ -85,7 +85,8 @@ public class PollingWorkflowImpl implements PollingWorkflow {
             // CONTINUE-AS-NEW: reset history to prevent unbounded growth.
             // This run has processed HISTORY_RESET_THRESHOLD iterations.
             // Start a fresh run, passing the accumulated totalIterations count.
-            if (currentRunIterations >= HISTORY_RESET_THRESHOLD) {
+            if (currentRunIterations >= HISTORY_RESET_THRESHOLD
+                    || Workflow.getInfo().isContinueAsNewSuggested()) {
                 log.info("Resetting event history via continueAsNew after {} iterations in this run " +
                         "(total: {})", currentRunIterations, totalIterations);
 
