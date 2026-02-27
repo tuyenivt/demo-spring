@@ -14,6 +14,10 @@ A Temporal Java demo project demonstrating workflow orchestration with:
 - Cron/scheduled workflows replacing `@Scheduled`
 - Continue-As-New for long-running polling workflows
 - Non-retryable exceptions for permanent failures
+- Validated workflow updates with `@UpdateMethod`
+- Scoped cancellation with `CancellationScope`
+- Async activity fan-out with `Promise.allOf`
+- Atomic start-or-signal with `signalWithStart`
 
 ## Architecture Overview
 
@@ -112,6 +116,7 @@ Tests use `TestWorkflowEnvironment` for isolated testing with mocked activities.
 | GET    | `/api/orders/{orderId}/status`           | Get workflow execution status            |
 | POST   | `/api/orders/{orderId}/cancel`           | Send cancel signal (returns 202)         |
 | PUT    | `/api/orders/{orderId}/shipping-address` | Send address update signal (returns 202) |
+| PATCH  | `/api/orders/{orderId}/quantity`         | Validated quantity update                |
 | GET    | `/api/orders/{orderId}/shipping-address` | Query current shipping address           |
 
 ```bash
@@ -127,6 +132,11 @@ curl -X PUT http://localhost:8080/api/orders/ORD-XXXXXXXX/shipping-address \
 
 # Query shipping address
 curl http://localhost:8080/api/orders/ORD-XXXXXXXX/shipping-address
+
+# Update quantity via Temporal Update API (validated)
+curl -X PATCH http://localhost:8080/api/orders/ORD-XXXXXXXX/quantity \
+  -H "Content-Type: application/json" \
+  -d '{"quantity":2}'
 ```
 
 ### Approval Workflow (Human-in-the-Loop)
@@ -177,7 +187,7 @@ curl -X DELETE http://localhost:8080/api/reports/stop
 
 ### Polling Workflow (Continue-As-New)
 
-Demonstrates `Workflow.continueAsNew()` — resets event history every 10 iterations to prevent unbounded growth.
+Demonstrates `Workflow.continueAsNew()` — resets event history every 10 iterations and also checks `Workflow.getInfo().isContinueAsNewSuggested()`.
 
 | Method | Endpoint                         | Description                    |
 |--------|----------------------------------|--------------------------------|
@@ -196,22 +206,54 @@ curl http://localhost:8080/api/polling/resource-42/status
 curl -X DELETE http://localhost:8080/api/polling/resource-42/stop
 ```
 
+### Notification Workflow (Async Fan-Out)
+
+Demonstrates parallel activity execution (`Async.procedure` + `Promise.allOf`) for email/SMS/push.
+
+| Method | Endpoint                  | Description                     |
+|--------|---------------------------|---------------------------------|
+| POST   | `/api/notifications/send` | Send email/sms/push in parallel |
+
+```bash
+curl -X POST http://localhost:8080/api/notifications/send \
+  -H "Content-Type: application/json" \
+  -d '{"customerId":"CUST-1","message":"Order shipped"}'
+```
+
+### Cart Workflow (SignalWithStart)
+
+Demonstrates atomic signal-or-start to avoid start/signal race conditions.
+
+| Method | Endpoint                    | Description                                |
+|--------|-----------------------------|--------------------------------------------|
+| POST   | `/api/carts/{cartId}/items` | Atomically start cart workflow or add item |
+
+```bash
+curl -X POST http://localhost:8080/api/carts/cart-123/items \
+  -H "Content-Type: application/json" \
+  -d '{"item":"SKU-42"}'
+```
+
 ## Key Features
 
-| Feature           | Description                                                                      |
-|-------------------|----------------------------------------------------------------------------------|
-| Saga Pattern      | Automatic compensation on failure (refund, release inventory)                    |
-| Signals           | Cancel order, update shipping address during processing                          |
-| Queries           | Read order status and shipping address (read-only, immediate)                    |
-| Heartbeat         | Long-running activities report progress and detect cancellation                  |
-| Search Attributes | Filter workflows by customer, amount, status                                     |
-| Versioning        | Safe deployments with backward compatibility (`Workflow.getVersion()`)           |
-| Rate Limiting     | Prevent overwhelming external services                                           |
-| Durable Timer     | `Workflow.sleep(24h)` shipping reminder — survives worker restarts               |
-| Workflow.await()  | Human-in-the-loop approvals — workflow pauses waiting for signal                 |
-| Cron Workflow     | `setCronSchedule()` replaces `@Scheduled` with durable distributed scheduling    |
-| Continue-As-New   | `Workflow.continueAsNew()` resets history for long-running polling workflows     |
-| Non-Retryable     | `ApplicationFailure.newNonRetryableFailure()` skips retries for permanent errors |
+| Feature           | Description                                                                        |
+|-------------------|------------------------------------------------------------------------------------|
+| Saga Pattern      | Automatic compensation on failure (refund, release inventory)                      |
+| Signals           | Cancel order, update shipping address during processing                            |
+| Queries           | Read order status and shipping address (read-only, immediate)                      |
+| Heartbeat         | Long-running activities report progress and detect cancellation                    |
+| Search Attributes | Filter workflows by customer, amount, status                                       |
+| Versioning        | Safe deployments with backward compatibility (`Workflow.getVersion()`)             |
+| Rate Limiting     | Prevent overwhelming external services                                             |
+| Durable Timer     | `Workflow.sleep(24h)` shipping reminder — survives worker restarts                 |
+| Workflow.await()  | Human-in-the-loop approvals — workflow pauses waiting for signal                   |
+| Cron Workflow     | `setCronSchedule()` replaces `@Scheduled` with durable distributed scheduling      |
+| Continue-As-New   | `Workflow.continueAsNew()` resets history for long-running polling workflows       |
+| Non-Retryable     | `ApplicationFailure.newNonRetryableFailure()` skips retries for permanent errors   |
+| Update API        | `@UpdateMethod` + `@UpdateValidatorMethod` for synchronous validated state changes |
+| CancellationScope | Cancel only a scoped timer/branch without cancelling the entire workflow           |
+| Async Fan-Out     | `Promise.allOf` for parallel activities in one workflow execution                  |
+| SignalWithStart   | Atomic start-or-signal prevents lost early signals                                 |
 
 ## Key Patterns
 
@@ -277,4 +319,30 @@ if (currentRunIterations >= HISTORY_RESET_THRESHOLD) {
     // Terminates current run, starts new run with these args
     Workflow.continueAsNew(targetId, totalIterations);
 }
+```
+
+### Validated Update Handler
+
+Updates are synchronous and can be rejected before mutating workflow state.
+
+```java
+@UpdateMethod
+int updateQuantity(String orderId, int newQuantity);
+
+@UpdateValidatorMethod(updateName = "updateQuantity")
+void validateUpdateQuantity(String orderId, int newQuantity);
+```
+
+### Cancellation Scope
+
+Cancel only the reminder timer branch while allowing the workflow to complete.
+
+```java
+var scope = Workflow.newCancellationScope(() -> {
+    Workflow.sleep(Duration.ofHours(24));
+    activities.sendNotification(customerId, "ships today");
+});
+scope.run();
+// later from signal handler:
+scope.cancel("cancel reminder");
 ```
