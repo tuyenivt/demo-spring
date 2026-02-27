@@ -111,4 +111,12 @@ public class OrderActivitiesImpl implements OrderActivities {
         // In production: call email service, SMS gateway, etc.
         log.info("Notification sent successfully");
     }
+
+    @Override
+    public long lookupPrice(String orderId) {
+        // Demo pricing lookup. In production this would call pricing service/database.
+        var unitPrice = 1_000L + Math.floorMod(orderId.hashCode(), 500);
+        log.info("Price lookup: orderId={}, unitPrice={}", orderId, unitPrice);
+        return unitPrice;
+    }
 }

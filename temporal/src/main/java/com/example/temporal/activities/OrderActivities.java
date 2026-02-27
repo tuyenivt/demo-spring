@@ -71,4 +71,11 @@ public interface OrderActivities {
      */
     @ActivityMethod
     void sendNotification(String customerId, String message);
+
+    /**
+     * Looks up the current unit price for an order.
+     * Demonstrates activity result memoization when a workflow reuses the same Promise result.
+     */
+    @ActivityMethod
+    long lookupPrice(String orderId);
 }

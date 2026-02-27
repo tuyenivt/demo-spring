@@ -10,6 +10,7 @@ import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.common.SearchAttributeKey;
 import io.temporal.failure.ActivityFailure;
+import io.temporal.workflow.Async;
 import io.temporal.workflow.ChildWorkflowOptions;
 import io.temporal.workflow.Workflow;
 import lombok.extern.slf4j.Slf4j;
@@ -99,6 +100,7 @@ public class OrderWorkflowImpl implements OrderWorkflow {
     private boolean cancelled = false;
     private String cancellationReason;
     private String shippingAddress;
+    private int quantity = 1;
 
     // Store payment auth for compensation
     private String paymentAuthId;
@@ -127,6 +129,13 @@ public class OrderWorkflowImpl implements OrderWorkflow {
             activities.validateOrder(orderId, amount);
             log.info("Order validation completed successfully");
 
+            // Activity result memoization demo:
+            // Calling get() on the same promise multiple times reuses persisted result from history.
+            var unitPricePromise = Async.function(activities::lookupPrice, orderId);
+            var unitPrice = unitPricePromise.get();
+            var paymentAmount = Math.multiplyExact(unitPrice, quantity);
+            log.info("Price lookup complete: unitPrice={}, quantity={}, paymentAmount={}", unitPrice, quantity, paymentAmount);
+
             // Check for cancellation signal
             if (cancelled) {
                 return handleCancellation(orderId);
@@ -138,7 +147,7 @@ public class OrderWorkflowImpl implements OrderWorkflow {
             log.info("Step 2: Processing payment");
 
             var paymentWorkflow = Workflow.newChildWorkflowStub(PaymentChildWorkflow.class, childWorkflowOptions);
-            var paymentResult = paymentWorkflow.processPayment(orderId, customerId, amount);
+            var paymentResult = paymentWorkflow.processPayment(orderId, customerId, paymentAmount);
             log.info("Payment processing completed: {}", paymentResult);
 
             // Extract auth ID for potential refund (saga compensation)
@@ -165,14 +174,15 @@ public class OrderWorkflowImpl implements OrderWorkflow {
 
             var inventoryWorkflow = Workflow.newChildWorkflowStub(
                     InventoryChildWorkflow.class, childWorkflowOptions);
-            var inventoryResult = inventoryWorkflow.reserveInventory(orderId, 1);
+            var inventoryResult = inventoryWorkflow.reserveInventory(orderId, quantity);
             log.info("Inventory reservation completed: {}", inventoryResult);
 
             // Register compensation for inventory
             final String orderIdForCompensation = orderId;
+            final int quantityForCompensation = quantity;
             compensations.add(() -> {
                 log.info("Saga compensation: Releasing inventory orderId={}", orderIdForCompensation);
-                activities.releaseInventory(orderIdForCompensation, 1);
+                activities.releaseInventory(orderIdForCompensation, quantityForCompensation);
             });
 
             // Check for cancellation signal
