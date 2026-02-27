@@ -1,9 +1,6 @@
 package com.example.temporal.workflows;
 
-import io.temporal.workflow.QueryMethod;
-import io.temporal.workflow.SignalMethod;
-import io.temporal.workflow.WorkflowInterface;
-import io.temporal.workflow.WorkflowMethod;
+import io.temporal.workflow.*;
 
 /**
  * Main workflow interface for order processing.
@@ -51,6 +48,22 @@ public interface OrderWorkflow {
      */
     @SignalMethod
     void updateShippingAddress(String newAddress);
+
+    /**
+     * Update quantity while workflow is processing.
+     * Unlike signals, updates are synchronous and can be rejected by validators.
+     *
+     * @return accepted quantity
+     */
+    @UpdateMethod
+    int updateQuantity(String orderId, int newQuantity);
+
+    /**
+     * Validator for quantity updates.
+     * Throws to reject invalid updates before state mutation.
+     */
+    @UpdateValidatorMethod(updateName = "updateQuantity")
+    void validateUpdateQuantity(String orderId, int newQuantity);
 
     /**
      * Query current order status.

@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -104,9 +105,19 @@ public class OrderWorkflowImpl implements OrderWorkflow {
 
     // Store payment auth for compensation
     private String paymentAuthId;
+    private String currentOrderId;
+
+    private static final EnumSet<OrderStatus> QUANTITY_MUTABLE_STATUSES = EnumSet.of(
+            OrderStatus.PENDING,
+            OrderStatus.VALIDATING,
+            OrderStatus.PROCESSING_PAYMENT,
+            OrderStatus.RESERVING_INVENTORY
+    );
 
     @Override
     public String processOrder(String orderId, String customerId, long amount) {
+        this.currentOrderId = orderId;
+
         log.info("Starting order processing for orderId={}, customerId={}, amount={}", orderId, customerId, amount);
 
         // Set search attributes for workflow discovery
@@ -257,6 +268,29 @@ public class OrderWorkflowImpl implements OrderWorkflow {
     public void updateShippingAddress(String newAddress) {
         log.info("Received shipping address update: {}", newAddress);
         this.shippingAddress = newAddress;
+    }
+
+    @Override
+    public int updateQuantity(String orderId, int newQuantity) {
+        if (!activities.checkInventory(orderId, newQuantity)) {
+            throw new IllegalArgumentException("insufficient inventory for quantity " + newQuantity);
+        }
+        this.quantity = newQuantity;
+        log.info("Accepted quantity update: orderId={}, quantity={}", orderId, newQuantity);
+        return this.quantity;
+    }
+
+    @Override
+    public void validateUpdateQuantity(String orderId, int newQuantity) {
+        if (!orderId.equals(currentOrderId)) {
+            throw new IllegalArgumentException("orderId mismatch for quantity update");
+        }
+        if (newQuantity <= 0) {
+            throw new IllegalArgumentException("quantity must be greater than 0");
+        }
+        if (!QUANTITY_MUTABLE_STATUSES.contains(status)) {
+            throw new IllegalStateException("quantity cannot be updated in status " + status);
+        }
     }
 
     @Override

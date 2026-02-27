@@ -8,6 +8,7 @@ import com.example.temporal.workflows.OrderWorkflow;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowNotFoundException;
 import io.temporal.client.WorkflowOptions;
+import io.temporal.client.WorkflowUpdateException;
 import io.temporal.common.RetryOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -253,6 +254,38 @@ public class OrderController {
             log.error("Failed to query shipping address: orderId={}, error={}", orderId, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("Failed to query: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Send a validated quantity update using Temporal Update API.
+     * <p>
+     * curl -X PATCH http://localhost:8080/api/orders/{orderId}/quantity \
+     * -H "Content-Type: application/json" \
+     * -d '{"quantity":2}'
+     */
+    @PatchMapping("/{orderId}/quantity")
+    public ResponseEntity<?> updateQuantity(@PathVariable String orderId, @RequestBody Map<String, Object> body) {
+        var workflowId = "order-workflow-" + orderId;
+        var quantityValue = body.get("quantity");
+
+        if (!(quantityValue instanceof Number numberValue)) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("quantity field must be a number"));
+        }
+        int quantity = numberValue.intValue();
+
+        try {
+            var stub = workflowClient.newWorkflowStub(OrderWorkflow.class, workflowId);
+            int acceptedQuantity = stub.updateQuantity(orderId, quantity);
+            return ResponseEntity.ok(Map.of("orderId", orderId, "acceptedQuantity", acceptedQuantity));
+        } catch (WorkflowNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse("Workflow not found: " + orderId));
+        } catch (WorkflowUpdateException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Quantity update rejected: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("Failed to update quantity: orderId={}, error={}", orderId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Failed to update quantity: " + e.getMessage()));
         }
     }
 
