@@ -27,4 +27,18 @@ public class IdempotentExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
+        log.warn("Invalid idempotent request: {}", ex.getMessage());
+
+        var error = ErrorResponse.builder()
+                .code("INVALID_REQUEST")
+                .message("Request validation failed")
+                .detail(ex.getMessage())
+                .timestamp(Instant.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
 }
