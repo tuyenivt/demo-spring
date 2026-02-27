@@ -136,7 +136,8 @@ public class TemporalConfig {
                 ReportWorkflowImpl.class,
                 PollingWorkflowImpl.class,
                 ApprovalWorkflowImpl.class,
-                NotificationWorkflowImpl.class
+                NotificationWorkflowImpl.class,
+                CartWorkflowImpl.class
         );
 
         // Register activity implementations
