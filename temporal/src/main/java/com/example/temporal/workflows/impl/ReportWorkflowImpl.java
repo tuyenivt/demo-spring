@@ -58,9 +58,11 @@ public class ReportWorkflowImpl implements ReportWorkflow {
             log.info("First cron run (no previous result)");
         }
 
-        var report = reportActivities.generateOrderReport(reportDate);
+        var activityInput = lastResult == null ? reportDate : reportDate + "|prev=" + lastResult;
+        var report = reportActivities.generateOrderReport(activityInput);
+        var decoratedReport = "current=" + report + ", previous=" + (lastResult == null ? "none" : lastResult);
 
-        log.info("Daily report completed: {}", report);
-        return report;
+        log.info("Daily report completed: {}", decoratedReport);
+        return decoratedReport;
     }
 }
