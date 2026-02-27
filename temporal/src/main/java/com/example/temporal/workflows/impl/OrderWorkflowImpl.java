@@ -10,7 +10,9 @@ import io.temporal.activity.ActivityOptions;
 import io.temporal.common.RetryOptions;
 import io.temporal.common.SearchAttributeKey;
 import io.temporal.failure.ActivityFailure;
+import io.temporal.failure.CanceledFailure;
 import io.temporal.workflow.Async;
+import io.temporal.workflow.CancellationScope;
 import io.temporal.workflow.ChildWorkflowOptions;
 import io.temporal.workflow.Workflow;
 import lombok.extern.slf4j.Slf4j;
@@ -106,6 +108,8 @@ public class OrderWorkflowImpl implements OrderWorkflow {
     // Store payment auth for compensation
     private String paymentAuthId;
     private String currentOrderId;
+    private CancellationScope shippingReminderScope;
+    private boolean shippingReminderCancelled;
 
     private static final EnumSet<OrderStatus> QUANTITY_MUTABLE_STATUSES = EnumSet.of(
             OrderStatus.PENDING,
@@ -211,6 +215,7 @@ public class OrderWorkflowImpl implements OrderWorkflow {
             if (shippingAddress != null) {
                 notificationMessage += " Shipping to: " + shippingAddress;
             }
+            notificationMessage += " Unit price: " + unitPricePromise.get() + ", quantity: " + quantity;
             activities.sendNotification(customerId, notificationMessage);
             log.info("Notification sent successfully");
 
@@ -220,11 +225,19 @@ public class OrderWorkflowImpl implements OrderWorkflow {
             // - It survives worker restarts and process failures
             // - Time is skipped instantly in TestWorkflowEnvironment (no real waiting)
             // - Use Workflow.currentTimeMillis() (not System.currentTimeMillis()) for time reads
-            log.info("Timer started: shipping reminder will fire in 24 hours (skipped in tests)");
-            Workflow.sleep(Duration.ofHours(24));
-
-            // After durable 24-hour delay, send the shipping reminder
-            activities.sendNotification(customerId, "Your order " + orderId + " ships today!");
+            shippingReminderScope = Workflow.newCancellationScope(() -> {
+                log.info("Timer started: shipping reminder will fire in 24 hours (skipped in tests)");
+                Workflow.sleep(Duration.ofHours(24));
+                activities.sendNotification(customerId, "Your order " + orderId + " ships today!");
+            });
+            try {
+                shippingReminderScope.run();
+            } catch (CanceledFailure e) {
+                shippingReminderCancelled = true;
+                log.info("Shipping reminder scope cancelled for orderId={}", orderId);
+            } finally {
+                shippingReminderScope = null;
+            }
 
             // Success - clear compensations (no longer needed)
             compensations.clear();
@@ -260,6 +273,14 @@ public class OrderWorkflowImpl implements OrderWorkflow {
     @Override
     public void cancelOrder(String reason) {
         log.info("Received cancel signal with reason: {}", reason);
+
+        if (shippingReminderScope != null) {
+            shippingReminderScope.cancel(reason);
+            shippingReminderCancelled = true;
+            log.info("Cancelled shipping reminder scope for orderId={}", currentOrderId);
+            return;
+        }
+
         this.cancelled = true;
         this.cancellationReason = reason;
     }
@@ -334,6 +355,9 @@ public class OrderWorkflowImpl implements OrderWorkflow {
     private String handleCancellation(String orderId) {
         status = OrderStatus.CANCELLED;
         var message = "Order " + orderId + " cancelled: " + cancellationReason;
+        if (shippingReminderCancelled) {
+            message += " (shipping reminder cancelled)";
+        }
         log.info(message);
         return message;
     }
