@@ -1,8 +1,10 @@
 package com.example.openapi.config;
 
+import com.example.openapi.feign.CorrelationIdInterceptor;
 import com.example.openapi.feign.PetStoreErrorDecoder;
 import feign.Client;
 import feign.Logger;
+import feign.RequestInterceptor;
 import feign.Retryer;
 import feign.codec.ErrorDecoder;
 import feign.okhttp.OkHttpClient;
@@ -27,6 +29,11 @@ public class FeignConfig {
     @Bean
     public Logger.Level feignLoggerLevel() {
         return Logger.Level.FULL;
+    }
+
+    @Bean
+    public RequestInterceptor correlationIdInterceptor() {
+        return new CorrelationIdInterceptor();
     }
 
     @Bean
