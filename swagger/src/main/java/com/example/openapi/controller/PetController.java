@@ -69,6 +69,12 @@ public class PetController {
         return toResponse(pet);
     }
 
+    @Hidden
+    @GetMapping("/internal/health")
+    public String hiddenHealth() {
+        return "ok";
+    }
+
     private PetResponse toResponse(Pet pet) {
         return new PetResponse(pet.getId(), pet.getName(), pet.getStatus() == null ? null : pet.getStatus().getValue());
     }
