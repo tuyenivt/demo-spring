@@ -3,6 +3,9 @@ package com.example.openapi.controller;
 import com.example.openapi.exception.GlobalExceptionHandler;
 import com.example.openapi.petstore.api.PetApi;
 import com.example.openapi.petstore.model.Pet;
+import feign.FeignException;
+import feign.Request;
+import feign.Response;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -10,6 +13,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
@@ -82,5 +87,71 @@ class PetControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void getPetByIdWithNegativeIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/pets/-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void getPetByIdNotFoundReturns404() throws Exception {
+        when(petApi.getPetById(99L)).thenThrow(feignException(404, "Not Found"));
+
+        mockMvc.perform(get("/api/pets/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    void findPetsByStatusWithInvalidValueReturns400() throws Exception {
+        mockMvc.perform(get("/api/pets").queryParam("status", "broken"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void createPetWithBlankNameReturns400() throws Exception {
+        mockMvc.perform(post("/api/pets")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "name": " ",
+                                  "status": "available"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void getPetByIdWithUpstream502Returns502() throws Exception {
+        when(petApi.getPetById(1L)).thenThrow(feignException(502, "Bad Gateway"));
+
+        mockMvc.perform(get("/api/pets/1"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.status").value(502));
+    }
+
+    private FeignException feignException(int status, String reason) {
+        Request request = Request.create(
+                Request.HttpMethod.GET,
+                "/pet/" + status,
+                Collections.emptyMap(),
+                null,
+                StandardCharsets.UTF_8,
+                null
+        );
+
+        Response response = Response.builder()
+                .status(status)
+                .reason(reason)
+                .request(request)
+                .headers(Collections.emptyMap())
+                .build();
+
+        return FeignException.errorStatus("PetApi#getPetById", response);
     }
 }

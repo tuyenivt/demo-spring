@@ -8,7 +8,7 @@ public record PetResponse(
         Long id,
         @Schema(description = "Pet name", example = "Buddy")
         String name,
-        @Schema(description = "Current pet status", example = "available")
+        @Schema(description = "Current pet status", example = "available", allowableValues = {"available", "pending", "sold"})
         String status
 ) {
 }

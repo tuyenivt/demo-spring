@@ -5,7 +5,9 @@ import com.example.openapi.dto.ErrorResponse;
 import com.example.openapi.dto.PetResponse;
 import com.example.openapi.petstore.api.PetApi;
 import com.example.openapi.petstore.model.Pet;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -36,15 +38,20 @@ public class PetController {
     @Operation(summary = "Get pet by ID")
     @ApiResponse(responseCode = "200", description = "Pet found", content = @Content(schema = @Schema(implementation = PetResponse.class)))
     @ApiResponse(responseCode = "404", description = "Pet not found", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public PetResponse getPetById(@PathVariable @Positive(message = "petId must be positive") Long petId) {
+    public PetResponse getPetById(
+            @Parameter(description = "Pet ID", example = "1", required = true)
+            @PathVariable @Positive(message = "petId must be positive") Long petId
+    ) {
         return toResponse(petApi.getPetById(petId));
     }
 
     @GetMapping
-    @Operation(summary = "Find pets by status")
+    @Deprecated
+    @Operation(summary = "Find pets by status", deprecated = true)
     @ApiResponse(responseCode = "200", description = "Pets found", content = @Content(array = @ArraySchema(schema = @Schema(implementation = PetResponse.class))))
     @ApiResponse(responseCode = "400", description = "Invalid request", content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public List<PetResponse> findPetsByStatus(
+            @Parameter(description = "Filter by status", example = "available", required = true)
             @RequestParam(defaultValue = "available")
             List<@Pattern(regexp = "available|pending|sold", message = "status must be available, pending, or sold") String> status
     ) {
