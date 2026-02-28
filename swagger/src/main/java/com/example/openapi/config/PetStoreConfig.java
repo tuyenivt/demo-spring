@@ -7,6 +7,7 @@ import feign.Client;
 import feign.Feign;
 import feign.Logger.Level;
 import feign.auth.BasicAuthRequestInterceptor;
+import feign.codec.ErrorDecoder;
 import feign.jackson.JacksonDecoder;
 import feign.jackson.JacksonEncoder;
 import feign.slf4j.Slf4jLogger;
@@ -32,6 +33,7 @@ public class PetStoreConfig {
 
     private final Client client;
     private final Level feignLoggerLevel;
+    private final ErrorDecoder petStoreErrorDecoder;
 
     private <T> T buildClient(Class<T> apiType) {
         return Feign.builder()
@@ -41,6 +43,7 @@ public class PetStoreConfig {
                 .logger(new Slf4jLogger(apiType))
                 .logLevel(feignLoggerLevel)
                 .requestInterceptor(new BasicAuthRequestInterceptor(username, password))
+                .errorDecoder(petStoreErrorDecoder)
                 .target(apiType, baseUrl);
     }
 
