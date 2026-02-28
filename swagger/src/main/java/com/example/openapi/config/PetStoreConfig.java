@@ -6,6 +6,7 @@ import com.example.openapi.petstore.api.UserApi;
 import feign.Client;
 import feign.Feign;
 import feign.Logger.Level;
+import feign.Retryer;
 import feign.auth.BasicAuthRequestInterceptor;
 import feign.codec.ErrorDecoder;
 import feign.jackson.JacksonDecoder;
@@ -33,6 +34,7 @@ public class PetStoreConfig {
 
     private final Client client;
     private final Level feignLoggerLevel;
+    private final Retryer retryer;
     private final ErrorDecoder petStoreErrorDecoder;
 
     private <T> T buildClient(Class<T> apiType) {
@@ -42,6 +44,7 @@ public class PetStoreConfig {
                 .decoder(new JacksonDecoder())
                 .logger(new Slf4jLogger(apiType))
                 .logLevel(feignLoggerLevel)
+                .retryer(retryer)
                 .requestInterceptor(new BasicAuthRequestInterceptor(username, password))
                 .errorDecoder(petStoreErrorDecoder)
                 .target(apiType, baseUrl);
