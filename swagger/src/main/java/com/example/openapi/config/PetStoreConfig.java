@@ -5,9 +5,11 @@ import com.example.openapi.petstore.api.StoreApi;
 import com.example.openapi.petstore.api.UserApi;
 import feign.Client;
 import feign.Feign;
+import feign.Logger.Level;
 import feign.auth.BasicAuthRequestInterceptor;
 import feign.jackson.JacksonDecoder;
 import feign.jackson.JacksonEncoder;
+import feign.slf4j.Slf4jLogger;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -29,12 +31,15 @@ public class PetStoreConfig {
     private String password;
 
     private final Client client;
+    private final Level feignLoggerLevel;
 
     private <T> T buildClient(Class<T> apiType) {
         return Feign.builder()
                 .client(client)
                 .encoder(new JacksonEncoder())
                 .decoder(new JacksonDecoder())
+                .logger(new Slf4jLogger(apiType))
+                .logLevel(feignLoggerLevel)
                 .requestInterceptor(new BasicAuthRequestInterceptor(username, password))
                 .target(apiType, baseUrl);
     }

@@ -14,3 +14,7 @@ springdoc:
     operations-sorter: method
     doc-expansion: list
   default-produces-media-type: application/json
+
+logging:
+  level:
+    com.example.openapi.petstore.api: DEBUG
