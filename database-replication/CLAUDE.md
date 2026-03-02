@@ -37,7 +37,8 @@ Spring Boot application demonstrating **MySQL master-slave replication** with re
 - **Default**: All operations route to READER datasource
 - **@UseWriter**: Methods annotated with `@UseWriter` route to WRITER datasource
 - **Context**: Uses `ScopedValue` for thread-safe routing context (compatible with virtual threads)
-- **Aspect**: `UseWriterAspect` intercepts annotated methods and sets the routing context
+- **Aspect**: `UseWriterAspect` calls `DataSourceContextHolder.callWithWriter(ScopedValue.CallableOp)` to wrap `joinPoint.proceed()`
+- **Logging**: `DatabaseRoutingAspect` (separate aspect in `aspect/` package) logs repository operations at TRACE level via `@Before`
 
 ### Important Configurations
 
@@ -48,8 +49,9 @@ Spring Boot application demonstrating **MySQL master-slave replication** with re
 - GTID replication ensures consistency across failovers
 - Input validation with `@Valid` and Bean Validation annotations (includes @Size constraints)
 - Spring Boot Actuator provides health indicators for both datasources at `/actuator/health`
-- Spring Retry enabled with `@EnableRetry` for transient failure handling
+- Spring Retry enabled with `@EnableRetry`; `findById` uses `@Retryable` (maxAttempts=5, exponential backoff) for `SQLException`/`DataAccessException`
 - OpenAPI documentation available at `/swagger-ui.html`
+- `GlobalExceptionHandler`: `EntityNotFoundException` → 404, `DataIntegrityViolationException` → 409, `MethodArgumentNotValidException` → 400
 
 ## Common Commands
 
@@ -99,8 +101,8 @@ Example: `GET /users?page=0&size=10`
 10. **Health Monitoring**: Actuator endpoints expose datasource health status
 11. **Retry Logic**: `@Retryable` with exponential backoff for transient failures
 12. **Least Privilege**: Separate users for app (DML) and Liquibase (DDL)
-13. **REST Conventions**: POST returns 201 Created, DELETE returns 404 if not found
-14. **Complete CRUD**: Create, Read, Update, Delete operations all implemented
+13. **REST Conventions**: POST returns 201 Created; DELETE returns 204 No Content on success, 404 if not found; GET returns 404 if not found
+14. **Complete CRUD**: Create, Read (by ID / by name / paginated), Update, Delete all implemented
 
 ## Usage Example
 
@@ -124,6 +126,11 @@ public class UserService {
     }
 }
 ```
+
+## Tests
+
+- **`DataSourceRoutingTest`** (7 unit tests, no Spring context): default→READER, runWithWriter, callWithWriter, revert-after-scope, nested scopes, thread isolation, revert-on-exception
+- **`ReplicationIntegrationTest`** (9 tests, `@SpringBootTest` + single Testcontainers MySQL for both writer and reader): create+read, not-found GET, validation on create, delete, find-by-name, update, not-found update, not-found delete, validation on update
 
 ## Gotchas
 
