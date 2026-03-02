@@ -54,11 +54,13 @@ caching/
     └── application.yml               # Configuration
 └── src/test/java/com/example/caching/
     ├── controller/
-    │   ├── ProductControllerTest.java # @WebMvcTest for ProductController
-    │   └── CacheControllerTest.java  # @WebMvcTest for CacheController
+    │   ├── ProductControllerTest.java      # @WebMvcTest for ProductController
+    │   ├── CacheControllerTest.java        # @WebMvcTest for CacheController
+    │   └── UserActivityControllerTest.java # @WebMvcTest for UserActivityController
     └── service/
-        ├── ProductServiceTest.java   # Unit tests for ProductService
-        └── UserServiceTest.java      # Unit tests for UserService
+        ├── ProductServiceTest.java         # Unit tests for ProductService
+        ├── UserServiceTest.java            # Unit tests for UserService
+        └── ProductCachingIntegrationTest.java # @SpringBootTest + Testcontainers end-to-end
 ```
 
 ## Key Components
@@ -68,17 +70,17 @@ caching/
 | Component        | Pattern                   | Description                                                                        |
 |------------------|---------------------------|------------------------------------------------------------------------------------|
 | `ProductService` | Service-layer caching     | Declarative caching with `@Cacheable`, `@CachePut`, `@CacheEvict` at service level |
-| `ProductService` | Cache-aside with fallback | Catches `DataAccessException` and falls back to database on Redis failure          |
+| `CacheConfig`    | Framework error handler   | `CacheErrorHandler` logs Redis failures and lets the method execute against DB     |
 | `UserService`    | Direct Redis with TTL     | Low-level list operations for activity tracking with 7-day expiration              |
 
-**Key Improvements:**
-- Cache annotations moved from repository to service layer for better separation of concerns
-- Specific exception handling (`DataAccessException` instead of generic `Exception`)
+**Key Design Points:**
+- Cache annotations at service layer (not repository) for better separation of concerns
+- Graceful fallback is handled by `CacheConfig.errorHandler()` (`CachingConfigurer`), not try/catch in service
 - Consistent cache keys (`#result.productId` for both read and write operations)
 - Comprehensive cache eviction on updates (both `product` and `product_list` caches)
+- `delete()` uses `beforeInvocation = true` to evict before DB delete
 - DTO pattern decouples API contract from database schema
 - Input validation with Jakarta Bean Validation
-- Comprehensive test coverage (unit tests + controller tests)
 
 ### Cache Configuration
 
@@ -90,18 +92,22 @@ caching/
 
 ### REST Endpoints
 
-| Endpoint                            | Method | Description                      |
-|-------------------------------------|--------|----------------------------------|
-| `/api/products/{id}`                | GET    | Get product by ID (cached)       |
-| `/api/products/search?name=`        | GET    | Search products by name (cached) |
-| `/api/products`                     | POST   | Create product                   |
-| `/api/products/{id}`                | PUT    | Update product                   |
-| `/api/cache/names`                  | GET    | List all cache names             |
-| `/api/cache/{name}`                 | DELETE | Clear entire cache               |
-| `/api/cache/{name}/{key}`           | DELETE | Evict specific key               |
-| `/api/messages/publish`             | POST   | Publish message to channel       |
-| `/api/users/{id}/activities`        | POST   | Add user activity                |
-| `/api/users/{id}/activities/oldest` | GET    | Get oldest activity (FIFO)       |
+| Endpoint                            | Method | Description                                  |
+|-------------------------------------|--------|----------------------------------------------|
+| `/api/products/{id}`                | GET    | Get product by ID (cached)                   |
+| `/api/products`                     | GET    | List all products (paginated)                |
+| `/api/products/search?name=`        | GET    | Search products by name (paginated)          |
+| `/api/products`                     | POST   | Create product                               |
+| `/api/products/{id}`                | PUT    | Update product (404 if not found)            |
+| `/api/products/{id}`                | DELETE | Delete product, evict caches (204/404)       |
+| `/api/cache/names`                  | GET    | List all cache names                         |
+| `/api/cache/stats`                  | GET    | Cache statistics (per RedisCache)            |
+| `/api/cache/{name}`                 | DELETE | Clear entire cache                           |
+| `/api/cache/{name}/{key}`           | DELETE | Evict specific key                           |
+| `/api/messages/publish`             | POST   | Publish message to channel                   |
+| `/api/users/{id}/activities`        | POST   | Add user activity                            |
+| `/api/users/{id}/activities`        | GET    | Get all activities (non-destructive)         |
+| `/api/users/{id}/activities/oldest` | GET    | Pop oldest activity (FIFO, destructive)      |
 
 ### Actuator Endpoints
 
@@ -171,6 +177,9 @@ implementation 'org.apache.commons:commons-pool2'
 implementation 'org.liquibase:liquibase-core'
 runtimeOnly 'com.mysql:mysql-connector-j'
 testImplementation 'org.springframework.boot:spring-boot-starter-test'
+testImplementation 'org.testcontainers:junit-jupiter'
+testImplementation 'org.testcontainers:mysql'
+testImplementation 'org.testcontainers:testcontainers'
 ```
 
 ## Redis Features Demonstrated
