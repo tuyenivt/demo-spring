@@ -25,6 +25,8 @@ modulith/
 └── shared/            # Cross-cutting concerns (API response, exceptions)
 ```
 
+Each module follows hexagonal structure: `domain/`, `application/`, `infrastructure/web/`
+
 ### Module Dependencies
 
 | Module    | Allowed Dependencies  | Publishes                                                                        | Listens To                                           |
@@ -58,6 +60,8 @@ public class CustomerFacade {
 }
 ```
 
+Facades: `CustomerFacade`, `OrderFacade`, `InventoryFacade`
+
 ### Event-Driven Communication
 
 Cross-module communication uses Spring events:
@@ -78,6 +82,16 @@ PENDING → CONFIRMED → COMPLETED
     ↘         ↘
      CANCELLED  CANCELLED
 ```
+
+## Exception Handling
+
+`GlobalExceptionHandler` (shared module) maps exceptions by naming convention:
+- `*NotFoundException` → 404
+- `OrderStateTransitionException` → 422
+- `DuplicateEmailException` / `DuplicateSkuException` / `InsufficientStockException` → 409
+- `IllegalArgumentException` → 400
+- `IllegalStateException` → 409
+- `MethodArgumentNotValidException` → 400 with field-level validation errors
 
 ## API Endpoints
 
@@ -105,15 +119,18 @@ PENDING → CONFIRMED → COMPLETED
 
 - MySQL 8.4 with Flyway migrations
 - Tables: `customers`, `orders`, `products`, `event_publication`
-- Event publication table tracks async event completion
+- Event publication table tracks async event completion (JDBC persistence enabled)
+- Flyway migrations: V1 (schema), V2 (add sku/quantity to orders), V3 (seed products)
+- `shared/BaseEntity`: `@MappedSuperclass` with id, createdAt, updatedAt audit fields
 
 ## Tech Stack
 
 - Java 21+ with Virtual Threads
 - Spring Boot 3.x + Spring Modulith
-- JPA/Hibernate, Flyway, Lombok
+- JPA/Hibernate (batch inserts/updates enabled), Flyway, Lombok
 - springdoc-openapi for Swagger
 - spring-modulith-observability for distributed tracing
+- spring-modulith-docs for PlantUML generation
 
 ## Testing
 
@@ -121,14 +138,27 @@ PENDING → CONFIRMED → COMPLETED
 ./gradlew modulith:test
 ```
 
-Spring Modulith provides module structure verification via `spring-modulith-starter-test`.
-`ModulithStructureTests` also generates PlantUML module documentation.
+- `ModulithStructureTests`: verifies module boundaries + generates PlantUML docs (uses `spring-modulith-starter-test` + `spring-modulith-docs`)
+- `CustomerModuleTest`: `@ApplicationModuleTest` — bootstraps customer module, asserts `CustomerFacade` not null
+- `OrderModuleTest`: `@ApplicationModuleTest` — `@MockitoBean CustomerFacade`, asserts `OrderFacade` not null
+- `InventoryModuleTest`: `@ApplicationModuleTest` — bootstraps inventory module, asserts `InventoryFacade` not null
+- Tests use H2 in-memory DB with `src/test/resources/schema.sql` (not Flyway)
 
 ## Configuration
 
 Key settings in `application.yml`:
 - Virtual threads enabled
-- JPA open-in-view disabled
-- Modulith event JDBC persistence enabled
+- JPA open-in-view disabled; Hibernate batch inserts/updates enabled (batch_size=20)
+- Modulith event JDBC persistence enabled + schema auto-initialization
 - Events republished on restart (resilience)
-- Actuator exposes health, metrics, modulith endpoints
+- Actuator exposes health, metrics, modulith endpoints; liveness/readiness probes enabled
+- Graceful shutdown with 30s timeout
+
+## Missing Demos
+
+- `@Externalized` events for externalizing to message broker (Kafka/RabbitMQ)
+- Scenario-based integration tests using Spring Modulith `Scenario` API
+- Module-level transaction rollback testing
+- `ApplicationModules.of().getModuleByName()` for programmatic boundary inspection
+- Event sourcing / event store querying via `PublishedEventRepository`
+- Custom `@ApplicationModule` named interfaces (restrict what's public within a module)
