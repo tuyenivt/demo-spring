@@ -132,11 +132,12 @@ Migration logs at INFO level:
 - Default values (vendor, inStock)
 
 ### Integration Tests
-`MainApplicationTests.java` - Full migration flow with Testcontainers:
-- Two MySQL containers (source and target)
-- Seed source database
-- Trigger migration
-- Verify correct transformation
+`MainApplicationTests.java` - Context load test with Testcontainers:
+- Two MySQL containers (source and target, both `mysql:8.4`)
+- Verifies Spring context loads with dual datasource configuration
+- Flyway auto-creates all tables (`product`, `migration_state`, `shedlock`, `old_product`)
+- Scheduling disabled via `spring.task.scheduling.enabled=false`
+- Does NOT seed, trigger, or verify migration data (context-load only)
 
 Run tests:
 ```bash
