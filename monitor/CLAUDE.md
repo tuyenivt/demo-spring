@@ -39,6 +39,7 @@ monitor/
 ## Key Dependencies
 
 - `spring-boot-starter-actuator` - Monitoring endpoints
+- `spring-boot-starter-aop` - Required for `@Timed`/`@Counted`/`@Observed` aspect processing
 - `spring-boot-starter-data-jpa` - Data persistence
 - `micrometer-registry-prometheus` - Prometheus metrics export
 - `micrometer-tracing-bridge-brave` - Distributed tracing
@@ -63,6 +64,7 @@ monitor/
 - `customer.transform` - Timer for transform operation duration (`@Timed`); SLOs at 500ms/1s/3s, p50/p95/p99
 - `customer.total` - Gauge tracking total customers in DB (`CustomerMetrics` via `MeterBinder`)
 - `customer.list` / `customer.transform.observed` - Observation spans via `@Observed`
+- `db.query` - `@Timed` on `CustomerRepository.findAll()`; extra tags `entity=customer, operation=findAll`
 
 ## Actuator Endpoints
 
@@ -94,7 +96,10 @@ management:
   metrics:
     distribution:
       percentiles[http.server.requests]: 0.5, 0.7, 0.95, 0.99
+      percentiles-histogram[http.server.requests]: true
       slo[http.server.requests]: 10ms, 100ms
+      slo[customer.transform]: 500ms, 1s, 3s
+      percentiles[customer.transform]: 0.5, 0.95, 0.99
 
 # Tracing
 management:
@@ -119,7 +124,7 @@ spring:
 ./gradlew :monitor:bootRun
 
 # Start monitoring stack
-cd monitor/docker && docker-compose up -d
+docker compose -f monitor/docker/docker-compose.yml up -d
 ```
 
 ## Access Points
@@ -154,7 +159,17 @@ Pre-configured alerts in `prometheus-alerts.yml`:
 ./gradlew :monitor:gatlingRun
 ```
 
-Runs CustomerSimulation: ramps 5-100 users over 160 seconds hitting `/customers` and `/customers/transform`.
+Runs `CustomerSimulation`: ramps 5-100 users over 160 seconds hitting `/customers` and `/customers/transform`. Assertions: success rate ≥ 95%, p99 < 5s, mean < 1s.
+
+## Tests
+
+Two test classes:
+- `SpringMonitorApplicationTests` (`@SpringBootTest`, random port) - 4 tests: health UP, readiness includes db+externalApi, prometheus contains custom metrics, metrics endpoint lists `customer.access`/`customer.transform`/`db.query`
+- `RootControllerTest` (`@WebMvcTest`) - 3 tests: ping, customers list, unreliable bad request validation; mocks `CustomerRepository`, `ExternalApiHealthIndicator`, `Random`
+
+```bash
+./gradlew :monitor:test
+```
 
 ## Architecture
 
