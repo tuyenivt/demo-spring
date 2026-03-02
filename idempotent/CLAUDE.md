@@ -38,10 +38,10 @@ idempotent/
 │   ├── config/
 │   │   └── AppConfig.java              # App-level config values
 │   ├── controller/
-│   │   ├── PaymentDemoController.java  # @Idempotent demo
+│   │   ├── PaymentDemoController.java  # @Idempotent demo (payment, refund, slow)
 │   │   ├── OrderDemoController.java    # @Idempotent demo
 │   │   ├── SubscriptionDemoController.java # @PreventRepeatedRequests demo
-│   │   └── IdempotentExceptionHandler.java # Global exception handler
+│   │   └── VoucherDemoController.java  # @Idempotent with business-meaningful key
 │   ├── dto/
 │   │   ├── PaymentRequest.java
 │   │   ├── PaymentResponse.java
@@ -49,11 +49,16 @@ idempotent/
 │   │   ├── OrderResponse.java
 │   │   ├── OrderItem.java
 │   │   ├── SubscribeRequest.java
+│   │   ├── VoucherRedeemRequest.java
+│   │   ├── VoucherRedeemResponse.java
 │   │   └── ErrorResponse.java
+│   ├── exception/
+│   │   └── IdempotentExceptionHandler.java # Global exception handler
 │   └── idempotent/
 │       ├── Idempotent.java             # Full caching annotation
 │       ├── PreventRepeatedRequests.java # Simple blocking annotation
 │       ├── IdempotentAspect.java       # Core AOP logic
+│       ├── CachedResponse.java         # Wrapper preserving HTTP status code
 │       ├── IdempotentConfig.java       # Idempotent settings
 │       ├── IdempotentException.java    # Duplicate error
 │       └── IdempotentRedisConfig.java  # Redis cache config
@@ -120,18 +125,22 @@ app:
 
 - **Atomic Redis operations**: Uses `SETNX` to prevent race conditions on concurrent duplicate requests
 - **Required idempotent key**: Validates `Idempotent-Key` header presence (returns 400 Bad Request if missing)
+- **HTTP status preservation**: `CachedResponse` wraps `statusCode + body`; replayed responses restore original status (e.g. 201, 204)
 - **Cleanup on failure**: Deletes cache keys when method execution fails to allow retries
 - **Per-endpoint configuration**: Override global timeout/expiry settings per annotation
 - **Request validation**: All DTOs validated with Bean Validation annotations
 
 ## Demo Endpoints
 
-| Endpoint                     | Method | Annotation                 | Description                                      |
-|------------------------------|--------|----------------------------|--------------------------------------------------|
-| `/api/demo/payments`         | POST   | `@Idempotent`              | Payment processing with full response caching    |
-| `/api/demo/orders`           | POST   | `@Idempotent`              | Order creation with full response caching        |
-| `/api/demo/orders/{orderId}` | DELETE | `@Idempotent`              | Idempotent order cancellation                    |
-| `/api/demo/subscriptions`    | POST   | `@PreventRepeatedRequests` | Newsletter signup with simple duplicate blocking |
+| Endpoint                     | Method | Annotation                 | Description                                                   |
+|------------------------------|--------|----------------------------|---------------------------------------------------------------|
+| `/api/demo/payments`         | POST   | `@Idempotent`              | Payment processing with full response caching                 |
+| `/api/demo/payments/refunds` | POST   | `@Idempotent`              | Refund with per-endpoint override (30s timeout, 60m expire)   |
+| `/api/demo/payments/slow`    | POST   | `@Idempotent`              | Slow payment (1.5s delay) to test in-progress duplicate 409   |
+| `/api/demo/orders`           | POST   | `@Idempotent`              | Order creation (returns 201 CREATED), caches with status code |
+| `/api/demo/orders/{orderId}` | DELETE | `@Idempotent`              | Idempotent order cancellation (returns 204 NO_CONTENT)        |
+| `/api/demo/subscriptions`    | POST   | `@PreventRepeatedRequests` | Newsletter signup with simple duplicate blocking              |
+| `/api/demo/vouchers/redeem`  | POST   | `@Idempotent`              | Voucher redemption; key format: `{voucherCode}_{userId}`      |
 
 ### Testing Demo Endpoints
 
@@ -148,13 +157,19 @@ curl -X POST http://localhost:8080/api/demo/payments \
   -H "Idempotent-Key: payment-123" \
   -d '{"amount": 100.00, "currency": "USD", "description": "Test payment"}'
 
-# Order: Create order with idempotency
+# Refund: per-endpoint override (30s lock timeout)
+curl -X POST http://localhost:8080/api/demo/payments/refunds \
+  -H "Content-Type: application/json" \
+  -H "Idempotent-Key: refund-123" \
+  -d '{"amount": 25.00, "currency": "USD", "description": "Refund"}'
+
+# Order: Create order with idempotency (returns 201)
 curl -X POST http://localhost:8080/api/demo/orders \
   -H "Content-Type: application/json" \
   -H "Idempotent-Key: order-456" \
   -d '{"items": [{"productId": "PROD-001", "productName": "Widget", "quantity": 2, "price": 50.00}], "shippingAddress": "123 Main St"}'
 
-# Order: Cancel order (idempotent DELETE)
+# Order: Cancel order (idempotent DELETE, returns 204)
 curl -X DELETE http://localhost:8080/api/demo/orders/order-123 \
   -H "Idempotent-Key: cancel-456"
 
@@ -170,17 +185,40 @@ curl -X POST http://localhost:8080/api/demo/subscriptions \
   -H "Idempotent-Key: sub-789" \
   -d '{"email": "test@example.com", "name": "Test User"}'
 
+# Voucher: business-meaningful key = {voucherCode}_{userId}
+curl -X POST http://localhost:8080/api/demo/vouchers/redeem \
+  -H "Content-Type: application/json" \
+  -H "Idempotent-Key: SAVE10_user-42" \
+  -d '{"voucherCode": "SAVE10", "userId": "user-42"}'
+
+# Replay: force re-execution and cache update
+curl -X POST http://localhost:8080/api/demo/payments \
+  -H "Content-Type: application/json" \
+  -H "Idempotent-Key: payment-123" \
+  -H "Idempotent-Replay: true" \
+  -d '{"amount": 100.00, "currency": "USD", "description": "Test payment"}'
+
 # Missing Idempotent-Key header returns 400 Bad Request
 curl -X POST http://localhost:8080/api/demo/payments \
   -H "Content-Type: application/json" \
   -d '{"amount": 100.00, "currency": "USD"}'
-
-# Invalid request data returns 400 Bad Request (validation)
-curl -X POST http://localhost:8080/api/demo/payments \
-  -H "Content-Type: application/json" \
-  -H "Idempotent-Key: payment-999" \
-  -d '{"amount": -100.00, "currency": ""}'
 ```
+
+## Tests
+
+Integration tests (`IdempotentIntegrationTest`, Testcontainers Redis, 9 tests):
+
+| Test                                                         | Description                                     |
+|--------------------------------------------------------------|-------------------------------------------------|
+| `shouldReturnCachedResponseOnDuplicatePaymentRequest`        | Same transaction ID returned on duplicate       |
+| `shouldReturnCachedResponseOnDuplicateOrderRequest`          | 201 status preserved on cached order reply      |
+| `shouldPreserveNoContentStatusOnDuplicateOrderCancelRequest` | 204 preserved on duplicate DELETE               |
+| `shouldReturn409WhenSubscriptionDuplicated`                  | `@PreventRepeatedRequests` duplicate → 409      |
+| `shouldProcessDifferentRequestsWithDifferentKeys`            | Different keys → different transaction IDs      |
+| `shouldBypassIdempotencyWithReplayHeader`                    | `Idempotent-Replay: true` creates new result    |
+| `shouldReturn400WhenIdempotentKeyHeaderIsMissing`            | Missing header → 400 INVALID_REQUEST            |
+| `shouldAllowReplayForPreventRepeatedRequests`                | Replay clears lock, re-execution succeeds       |
+| `shouldReturn409WhenRequestInProgress`                       | Concurrent slow request → 409 DUPLICATE_REQUEST |
 
 ## Error Handling
 
