@@ -17,16 +17,22 @@ cd graphql
 ```
 src/main/java/com/example/graphql/
 ├── config/           # GraphQL configuration (scalars)
-├── controller/       # GraphQL resolvers (@QueryMapping, @MutationMapping)
+├── controller/       # GraphQL resolvers (Student, Vehicle, Version)
 ├── service/          # Business logic with validation
 ├── repository/       # JPA repositories with Specification support
 ├── entity/           # JPA entities (Student, Vehicle)
-├── dto/              # Input types, filters, pagination, sorting
+├── dto/
+│   ├── filter/       # StringFilter, DateTimeFilter, VehicleTypeFilter, UUIDFilter
+│   ├── input/        # Create/Update/Upsert input records
+│   ├── pagination/   # PageInput, PageResult, Connection, Edge, PageInfoDto
+│   ├── sort/         # StudentSort, VehicleSort, SortField enums, SortDirection
+│   └── versioning/   # ApiVersion, StudentV1, VehicleV1
 ├── enums/            # VehicleType enum
-├── exception/        # Custom exceptions and error handler
-├── validation/       # Business rule validators
+├── exception/        # ErrorCode, GraphQLErrorHandler, custom exceptions
+├── interceptor/      # VersionInterceptor
 ├── specification/    # JPA Specification for dynamic filtering
-└── util/             # Cursor encoding, sort utilities
+├── validation/       # StudentValidator, VehicleValidator
+└── util/             # CursorUtils (Base64 encode/decode), SortUtils, AgeUtils
 
 src/main/resources/graphql/
 ├── root.graphqls         # Base Query/Mutation types
@@ -34,7 +40,7 @@ src/main/resources/graphql/
 ├── pagination.graphqls   # PageInput, filters, connection types
 ├── studentql.graphqls    # Student schema
 ├── vehicleql.graphqls    # Vehicle schema
-└── versioning.graphqls   # V1 deprecated types
+└── versioning.graphqls   # V1 deprecated types + ApiVersion
 ```
 
 ## Key Technologies
@@ -61,14 +67,19 @@ src/main/resources/graphql/
 
 ### Queries
 
-| Query                                          | Description                     |
-|------------------------------------------------|---------------------------------|
-| `student(id)`                                  | Get student by ID               |
-| `studentsPage(page, filter, sort)`             | Offset-based pagination         |
-| `studentsConnection(connection, filter, sort)` | Cursor-based (Relay) pagination |
-| `vehiclesPage(page, filter, sort)`             | Offset-based pagination         |
-| `vehiclesConnection(connection, filter, sort)` | Cursor-based pagination         |
-| `apiVersion`                                   | API version info                |
+| Query                                          | Description                                                  |
+|------------------------------------------------|--------------------------------------------------------------|
+| `student(id)`                                  | Get student by ID                                            |
+| `students(limit)` *(deprecated)*               | List students (use studentsPage)                             |
+| `studentsPage(page, filter, sort)`             | Offset-based pagination                                      |
+| `studentsConnection(connection, filter, sort)` | Cursor-based (Relay) pagination                              |
+| `vehicles(limit)` *(deprecated)*               | List vehicles (use vehiclesPage)                             |
+| `vehiclesPage(page, filter, sort)`             | Offset-based pagination                                      |
+| `vehiclesConnection(connection, filter, sort)` | Cursor-based pagination                                      |
+| `apiVersion`                                   | API version info (v2.0, deprecated features, supportedUntil) |
+| `studentV1(id)` *(deprecated)*                 | V1 student shape                                             |
+| `studentsV1(limit)` *(deprecated)*             | V1 student list                                              |
+| `vehiclesV1(limit)` *(deprecated)*             | V1 vehicle list                                              |
 
 ### Mutations
 
@@ -83,7 +94,11 @@ src/main/resources/graphql/
 | `updateVehicle(input)`   | Partial update        |
 | `upsertVehicle(input)`   | Create or update      |
 
-**Note on Partial Updates:** The `update` mutations perform partial updates where only provided fields are modified. However, it is not possible to explicitly set a field to `null` (clear it) - passing `null` means "don't change this field". To perform a full replacement including clearing fields, use the `upsert` mutation with all fields specified.
+**Note on Partial Updates:** `update` mutations skip `null` fields (cannot explicitly clear a field). Use `upsert` with all fields to do a full replacement.
+
+### BatchMapping (N+1-safe)
+- `StudentController.vehicles(List<Student>)` → `Map<Student, List<Vehicle>>`
+- `VehicleController.student(List<Vehicle>)` → `Map<Vehicle, Student>`
 
 ## Filtering
 
@@ -104,6 +119,11 @@ src/main/resources/graphql/
 ```graphql
 { type: { eq: CAR } }
 { type: { in: [CAR, MOTORCYCLE] } }
+```
+
+### UUIDFilter
+```graphql
+{ studentId: { eq: "uuid-here" } }
 ```
 
 ## Pagination Examples
@@ -130,6 +150,7 @@ query {
   ) {
     edges { cursor node { id name } }
     pageInfo { hasNextPage endCursor }
+    totalCount
   }
 }
 ```
@@ -147,15 +168,30 @@ query {
   - CAR, TRUCK, VAN, BUS: 16+
   - MOTORCYCLE, SCOOTER: 18+
   - BICYCLE: no restriction
+- `createAll` validates total count before any saves (uses `countByStudentId`)
 
 ## Error Handling
 
-Custom error codes in `ErrorCode` enum:
-- `VALIDATION_ERROR` - Input validation failed
-- `RESOURCE_NOT_FOUND` - Entity not found
-- `TECHNICAL_ERROR` - Internal server error
+`ErrorCode` enum with code, message, statusCode, and `isTechnicalError()`:
+- `VALIDATION_ERROR` (400) - Input validation failed
+- `INVALID_INPUT` (400) - Invalid input provided
+- `RESOURCE_NOT_FOUND` (404) - Entity not found
+- `DUPLICATE_RESOURCE` (409) - Resource already exists
+- `BUSINESS_RULE_VIOLATION` (422) - Business rule violated
+- `STUDENT_AGE_INVALID` (422) - Student age is invalid
+- `VEHICLE_ASSIGNMENT_ERROR` (422) - Cannot assign vehicle to student
+- `STUDENT_HAS_VEHICLES` (409) - Cannot delete student with vehicles
+- `INTERNAL_SERVER_ERROR` (500), `DATABASE_ERROR` (500), `EXTERNAL_SERVICE_ERROR` (503)
 
-Errors include field-level details for validation failures.
+`GraphQLErrorHandler` maps exceptions to GraphQL errors with `extensions` (errorCode, statusCode, fieldErrors for validation).
+
+## Versioning
+
+- `VersionController` serves `apiVersion`, `studentV1`, `studentsV1`, `vehiclesV1`
+- `ApiVersion` record: version="2.0", deprecatedFeatures list, supportedUntil="2027-12-31"
+- `StudentV1` / `VehicleV1`: flattened V1 DTOs mapped from current entities via static `from()` factory
+- `VersionInterceptor`: HTTP interceptor for version tracking
+- `@deprecated` used in schema; deprecated queries still functional
 
 ## Configuration
 
@@ -172,4 +208,26 @@ spring.threads.virtual.enabled: true
 ../gradlew test
 ```
 
-GraphQL test support available via `spring-graphql-test`.
+4 test classes — all use `@MockitoBean` (Spring Boot 3.4+):
+- `StudentControllerTest` (6 tests) — `@GraphQlTest` + `GraphQlTester`; imports `GraphQLConfig`, mocks `StudentService` + `VehicleRepository`
+- `VehicleControllerTest` (5 tests) — `@GraphQlTest` + `GraphQlTester`; imports `GraphQLConfig`, mocks `VehicleService` + `StudentRepository`
+- `StudentServiceTest` (8 tests) — `@ExtendWith(MockitoExtension.class)`; unit tests for create/findById/update/findPage/findConnection/createAll/findAll
+- `VehicleServiceTest` (9 tests) — `@ExtendWith(MockitoExtension.class)`; unit tests for create (with/without student)/update/findPage/findConnection/createAll/findAll
+
+## Missing Demos
+
+- `deleteStudent` / `deleteVehicle` mutations (requires `STUDENT_HAS_VEHICLES` error code already defined)
+- GraphQL subscriptions (`Flux<Student>`)
+- Computed field `age` via `@SchemaMapping`
+- `vehicleCount` field with `countByStudentId`
+- `vehiclesByStudent` convenience query
+- `DataFetchingEnvironment` field selection optimization
+- Bean Validation integration (`@Valid` on inputs)
+- `@BatchMapping` test coverage
+
+## Missing Tests
+
+- `updateStudent` / `upsertStudent` / `updateVehicle` / `upsertVehicle` mutation tests in controller tests
+- Back-pagination (`last`/`before`) cursor tests
+- `VersionController` / `VersionInterceptor` tests
+- `ETag` / cache header tests
