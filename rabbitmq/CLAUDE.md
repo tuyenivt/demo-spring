@@ -12,9 +12,9 @@ rabbitmq/
 └── src/main/
     ├── java/com/example/rabbitmq/
     │   ├── Application.java           # Spring Boot main class
-    │   ├── DemoRunner.java            # Runs all pattern demos
+    │   ├── DemoRunner.java            # Runs all pattern demos (CommandLineRunner)
     │   ├── config/
-    │   │   └── RabbitMQConfig.java    # All exchanges, queues, bindings
+    │   │   └── RabbitMQConfig.java    # All exchanges, queues, bindings + RabbitTemplate
     │   ├── producer/
     │   │   ├── RpcProducer.java       # RPC pattern
     │   │   ├── NotificationProducer.java  # Fanout
@@ -25,18 +25,21 @@ rabbitmq/
     │   ├── consumer/
     │   │   ├── RpcConsumer.java
     │   │   ├── NotificationConsumer.java
-    │   │   ├── TaskConsumer.java
+    │   │   ├── TaskConsumer.java      # Manual ACK; basicNack(requeue=true) on failure
     │   │   ├── OrderConsumer.java
-    │   │   ├── PaymentConsumer.java
+    │   │   ├── PaymentConsumer.java   # Manual ACK; basicReject→DLQ or basicNack(requeue=true)
     │   │   └── ReminderConsumer.java
-    │   └── dto/
-    │       ├── RpcRequest.java
-    │       ├── RpcResponse.java
-    │       ├── Notification.java
-    │       ├── Task.java
-    │       ├── Order.java
-    │       ├── Payment.java
-    │       └── Reminder.java
+    │   ├── dto/
+    │   │   ├── RpcRequest.java
+    │   │   ├── RpcResponse.java
+    │   │   ├── Notification.java
+    │   │   ├── Task.java
+    │   │   ├── Order.java
+    │   │   ├── Payment.java
+    │   │   └── Reminder.java
+    │   └── exception/
+    │       ├── PaymentValidationException.java   # Unrecoverable → DLQ
+    │       └── PaymentProcessingException.java   # Recoverable → requeue
     └── resources/
         └── application.yml            # Externalized configuration
 ```
@@ -54,12 +57,15 @@ rabbitmq/
 
 ## Key Features
 
-- **JSON Serialization**: Uses `Jackson2JsonMessageConverter` instead of Java serialization
-- **Publisher Confirms**: Enabled for reliable message delivery
-- **Manual Acknowledgment**: TaskConsumer uses manual acks for reliable processing
-- **Fair Dispatch**: Prefetch=1 for work queue pattern
+- **JSON Serialization**: `Jackson2JsonMessageConverter` on `RabbitTemplate` + listener container
+- **Publisher Confirms**: `publisher-confirm-type: correlated` + `publisher-returns: true` enabled; no `ConfirmCallback` wired
+- **Manual Acknowledgment**: `TaskConsumer` and `PaymentConsumer` use `ackMode = "MANUAL"`
+- **ACK Strategy in PaymentConsumer**: `basicReject(false)` for `PaymentValidationException` (→ DLQ), `basicNack(false, true)` for `PaymentProcessingException` (recoverable, requeue)
+- **Listener Retry**: Spring AMQP retry enabled (3 attempts, initial 1s, multiplier 2.0, max 10s)
+- **Fair Dispatch**: Global `prefetch: 1` in `application.yml`
 - **Health Check**: Actuator endpoint at `/actuator/health`
 - **Externalized Config**: Environment variables for connection settings
+- **Tests**: None written yet (`spring-rabbit-test` dependency present)
 
 ## Configuration Constants
 
