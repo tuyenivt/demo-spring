@@ -19,6 +19,7 @@ versioning/
 │   │   └── VersionDiscoveryController.java  # Version discovery (/api/versions)
 │   ├── config/
 │   │   ├── ApiVersionInterceptor.java       # Centralized version detection + metrics recording
+│   │   ├── DataSeeder.java                  # CommandLineRunner: seeds 6 employees on startup if empty
 │   │   ├── EtagConfig.java                  # ShallowEtagHeaderFilter bean
 │   │   ├── OpenApiConfig.java               # SpringDoc grouped APIs (v1, v2)
 │   │   ├── ResponseVersionAdvice.java       # Wraps /api/** responses in ApiResponse envelope
@@ -155,6 +156,6 @@ Link: </v2/employees>; rel="successor-version"
 ./gradlew :versioning:test
 ```
 
-Test classes:
+Test file: `VersioningIntegrationTest.java` contains two top-level classes:
 - `VersioningIntegrationTest` — nested suites per strategy: `UriPathVersioning`, `HeaderVersioning`, `MediaTypeVersioning`, `QueryParameterVersioning`, `JsonViewFieldEvolution`, `ETagBehavior`, `DiscoveryAndEnvelope`, `VersionContract`
-- `V1DisabledProfileIntegrationTest` — profile `v1-disabled`: verifies 404 on `/v1/employees` and single-version discovery
+- `V1DisabledProfileIntegrationTest` — same file, `@ActiveProfiles("v1-disabled")`: verifies 404 on `/v1/employees` and single-version discovery
