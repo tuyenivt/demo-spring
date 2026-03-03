@@ -2,7 +2,7 @@
 
 ## Overview
 
-Spring Boot application demonstrating **Temporal.io** workflow orchestration. Features order processing with saga compensation, durable timers, human-in-the-loop approvals, cron scheduling, continue-as-new for long-running workflows, non-retryable exceptions, signals/queries, activity heartbeat, search attributes, and workflow versioning.
+Spring Boot application demonstrating **Temporal.io** workflow orchestration. Features order processing with saga compensation, durable timers, human-in-the-loop approvals, cron scheduling, continue-as-new for long-running workflows, non-retryable exceptions, signals/queries, validated updates, activity heartbeat, search attributes, workflow versioning, cancellation scopes, async fan-out with `Promise.allOf`, and `signalWithStart`.
 
 ## Tech Stack
 
@@ -18,33 +18,43 @@ temporal/
 ├── src/main/java/com/example/temporal/
 │   ├── MainApplication.java
 │   ├── controller/
-│   │   ├── OrderController.java       # Order workflow CRUD + signals/queries
-│   │   ├── ApprovalController.java    # Human-in-the-loop approval workflow
-│   │   └── ReportController.java      # Cron report workflow management
+│   │   ├── OrderController.java          # Order workflow CRUD + signals/queries/update
+│   │   ├── ApprovalController.java       # Human-in-the-loop approval workflow
+│   │   ├── ReportController.java         # Cron report workflow management
+│   │   ├── PollingController.java        # Continue-As-New polling workflow
+│   │   ├── NotificationController.java   # Async fan-out notification workflow
+│   │   └── CartController.java           # SignalWithStart cart workflow
 │   ├── config/
-│   │   ├── TemporalConfig.java        # Temporal client & worker setup
-│   │   └── TemporalProperties.java    # Configuration properties
+│   │   ├── TemporalConfig.java           # Temporal client & worker setup
+│   │   └── TemporalProperties.java       # Configuration properties
 │   ├── workflows/
-│   │   ├── OrderWorkflow.java         # Main workflow (signals, queries)
-│   │   ├── PaymentChildWorkflow.java  # Payment child workflow
+│   │   ├── OrderWorkflow.java            # Main workflow (signals, queries, @UpdateMethod)
+│   │   ├── PaymentChildWorkflow.java     # Payment child workflow
 │   │   ├── InventoryChildWorkflow.java
-│   │   ├── ApprovalWorkflow.java      # Human-in-the-loop with Workflow.await()
-│   │   ├── ReportWorkflow.java        # Cron workflow with setCronSchedule()
-│   │   ├── PollingWorkflow.java       # Continue-As-New polling workflow
-│   │   └── impl/                      # Workflow implementations
+│   │   ├── ApprovalWorkflow.java         # Human-in-the-loop with Workflow.await()
+│   │   ├── ReportWorkflow.java           # Cron workflow with setCronSchedule()
+│   │   ├── PollingWorkflow.java          # Continue-As-New polling workflow
+│   │   ├── NotificationWorkflow.java     # Async fan-out with Promise.allOf
+│   │   ├── CartWorkflow.java             # SignalWithStart cart workflow
+│   │   └── impl/                         # Workflow implementations
 │   ├── activities/
 │   │   ├── OrderActivities.java
-│   │   ├── PaymentActivities.java     # With refund for saga compensation
-│   │   ├── ReportActivities.java      # For cron report workflow
-│   │   └── impl/                      # Activity implementations (with heartbeat)
-│   ├── dto/                           # Request/Response DTOs
+│   │   ├── PaymentActivities.java        # With refund for saga compensation
+│   │   ├── ReportActivities.java         # For cron report workflow
+│   │   ├── NotificationActivities.java   # Email/SMS/push for fan-out
+│   │   └── impl/                         # Activity implementations (with heartbeat)
+│   ├── dto/                              # Request/Response DTOs
 │   └── exception/
 │       ├── OrderActivitiesException.java
 │       ├── PaymentActivitiesException.java
 │       └── OrderValidationException.java  # Non-retryable permanent failure
 ├── src/test/java/com/example/temporal/
 │   └── workflows/
-│       └── OrderWorkflowTest.java     # Workflow unit tests (signals + compensation)
+│       ├── OrderWorkflowTest.java         # success/failure/signal/saga/cancellation-scope
+│       ├── ApprovalWorkflowTest.java      # approve/reject/auto-reject timeout
+│       ├── NotificationWorkflowTest.java  # fan-out parallel activities
+│       ├── PollingWorkflowTest.java       # continue-as-new iterations
+│       └── ReportWorkflowTest.java        # cron last-completion-result
 └── src/main/resources/
     └── application.yml
 ```
@@ -61,6 +71,7 @@ temporal/
 | POST   | `/api/orders/{orderId}/cancel`           | Send cancelOrder signal (202)            |
 | PUT    | `/api/orders/{orderId}/shipping-address` | Send updateShippingAddress signal (202)  |
 | GET    | `/api/orders/{orderId}/shipping-address` | Query current shipping address           |
+| PATCH  | `/api/orders/{orderId}/quantity`         | Validated quantity update (@UpdateMethod)|
 
 ### Approval Workflow
 
@@ -86,6 +97,18 @@ temporal/
 | GET    | `/api/polling/{targetId}/status` | Query current iteration count |
 | DELETE | `/api/polling/{targetId}/stop`   | Terminate polling workflow    |
 
+### Notification Workflow (Async Fan-Out)
+
+| Method | Endpoint                  | Description                         |
+|--------|---------------------------|-------------------------------------|
+| POST   | `/api/notifications/send` | Send email/SMS/push in parallel     |
+
+### Cart Workflow (SignalWithStart)
+
+| Method | Endpoint                    | Description                                |
+|--------|-----------------------------|--------------------------------------------|
+| POST   | `/api/carts/{cartId}/items` | Atomically start cart workflow or add item |
+
 ## Configuration
 
 ```yaml
@@ -106,6 +129,7 @@ OrderWorkflow (Main)
 ├── [Signal] updateShippingAddress(newAddress)
 ├── [Query]  getStatus()
 ├── [Query]  getShippingAddress()
+├── [Update] updateQuantity(orderId, qty) — @UpdateMethod + @UpdateValidatorMethod
 │
 ├── validateOrder() [Activity - 3 retries, non-retryable on OrderValidationException]
 │   └── Fraud check (v2 feature via versioning)
@@ -118,8 +142,9 @@ OrderWorkflow (Main)
 │   └── reserveInventory() [Activity - 3 retries]
 │   └── [Saga] releaseInventory() on failure
 ├── sendNotification() [Activity] — order confirmed
-├── Workflow.sleep(24h) — durable timer, survives restarts
-└── sendNotification() [Activity] — shipping reminder
+├── CancellationScope { Workflow.sleep(24h) + reminder notification }
+│   └── cancelReminderScope() from signal cancels only this branch
+└── sendNotification() [Activity] — shipping reminder (inside scope)
 
 ApprovalWorkflow
 ├── sendNotification() [Activity] — notify approver
@@ -137,6 +162,15 @@ PollingWorkflow (Continue-As-New)
 ├── Loop: sendNotification() [Activity] per iteration
 ├── Workflow.sleep(5s) between polls
 └── Workflow.continueAsNew() every 10 iterations — resets event history
+
+NotificationWorkflow (Async Fan-Out)
+├── Async.procedure(sendEmail)   ─┐
+├── Async.procedure(sendSms)      ├─ Promise.allOf(...).get() — parallel
+└── Async.procedure(sendPush)    ─┘
+
+CartWorkflow (SignalWithStart)
+├── [Signal] addItem(item) — received on start or during execution
+└── Workflow.await() until checkout or timeout
 ```
 
 ## Key Patterns
@@ -208,7 +242,46 @@ Compensations registered after each step, executed in reverse on failure:
 - `Workflow.getVersion("FraudCheck", DEFAULT_VERSION, 2)` — v2 adds fraud check
 - Running workflows continue on their original version
 
-### 11. Rate Limiting & Graceful Shutdown
+### 11. Validated Update Handler
+Updates are synchronous (client awaits result) and can be rejected before mutating state:
+```java
+@UpdateMethod
+int updateQuantity(String orderId, int newQuantity);
+
+@UpdateValidatorMethod(updateName = "updateQuantity")
+void validateUpdateQuantity(String orderId, int newQuantity); // throws to reject
+```
+
+### 12. Cancellation Scope
+Cancel only a scoped branch (reminder timer) without cancelling the whole workflow:
+```java
+var scope = Workflow.newCancellationScope(() -> {
+    Workflow.sleep(Duration.ofHours(24));
+    activities.sendNotification(customerId, "ships today");
+});
+scope.run();
+// from signal: scope.cancel("cancel reminder");
+```
+
+### 13. Async Fan-Out (`Promise.allOf`)
+Run activities in parallel within one workflow execution:
+```java
+Promise<Void> email = Async.procedure(activities::sendEmail, customerId, message);
+Promise<Void> sms   = Async.procedure(activities::sendSms, customerId, message);
+Promise<Void> push  = Async.procedure(activities::sendPush, customerId, message);
+Promise.allOf(email, sms, push).get();
+```
+
+### 14. SignalWithStart
+Atomic start-or-signal prevents lost signals on race with workflow start:
+```java
+workflowClient.signalWithStart(CartWorkflow.class,
+    CartWorkflow::addItem, new Object[]{item},
+    CartWorkflow::execute, new Object[]{cartId},
+    options);
+```
+
+### 15. Rate Limiting & Graceful Shutdown
 - Max 10 concurrent activities, 20 concurrent workflow tasks
 - `@PreDestroy` drains sticky task queue before shutdown (30s timeout)
 
@@ -247,8 +320,11 @@ Tests use Temporal's `TestWorkflowEnvironment` for:
 - In-memory Temporal server (no Docker needed)
 - Concrete stub activity implementations per test scenario
 - Time skipping — `Workflow.sleep(24h)` completes instantly
-- Signal tests: cancel order, update shipping address
-- Saga compensation tests: tracking stubs verify refund/release call counts
+- `OrderWorkflowTest`: success/failure/cancel-signal/saga-compensation/cancellation-scope
+- `ApprovalWorkflowTest`: approve/reject/auto-reject on timeout
+- `NotificationWorkflowTest`: parallel fan-out (email+sms+push)
+- `PollingWorkflowTest`: continue-as-new iteration count
+- `ReportWorkflowTest`: cron last-completion-result
 
 ## Development Notes
 
