@@ -30,30 +30,49 @@ swagger/
     │   ├── OpenApiConfig.java      # Springdoc OpenAPI metadata (title, server)
     │   └── PetStoreConfig.java     # Feign client beans (PetApi, StoreApi, UserApi)
     ├── controller/
-    │   └── PetController.java      # REST facade: GET /api/pets, GET /api/pets/{id}, POST /api/pets
+    │   ├── PetController.java      # REST facade: /api/pets endpoints
+    │   └── StoreController.java    # REST facade: /api/orders endpoints
     ├── dto/
     │   ├── CreatePetRequest.java   # Validated request record
     │   ├── PetResponse.java        # Response record
     │   └── ErrorResponse.java      # Standard error record (timestamp, status, message)
-    └── exception/
-        └── GlobalExceptionHandler.java  # Handles FeignException, validation, generic errors
+    ├── exception/
+    │   ├── GlobalExceptionHandler.java   # Maps domain + Feign exceptions to HTTP responses
+    │   ├── PetNotFoundException.java     # 404 — resource not found upstream
+    │   ├── UpstreamClientException.java  # 400 — upstream 4xx error
+    │   └── UpstreamServiceException.java # 502 — upstream 5xx error
+    └── feign/
+        ├── CorrelationIdInterceptor.java # Propagates X-Correlation-ID via MDC
+        └── PetStoreErrorDecoder.java     # Maps Feign error responses to domain exceptions
 ```
 
 ## Key Components
 
 ### Configuration Classes
 
-- `FeignConfig.java`: Provides `feign.Client` bean backed by OkHttpClient
-- `OpenApiConfig.java`: Configures Springdoc `OpenAPI` bean (title, version, local server)
+- `FeignConfig.java`: OkHttpClient bean + `Retryer.Default` (3 attempts, 100ms–1s) + `Logger.Level.FULL` + `CorrelationIdInterceptor` + `PetStoreErrorDecoder`
+- `OpenApiConfig.java`: Configures Springdoc `OpenAPI` bean (title, version, local server) + global `bearerAuth` security scheme
 - `PetStoreConfig.java`: `@ConfigurationProperties(prefix = "app.pet-store")` — builds PetApi, StoreApi, UserApi Feign clients with Basic Auth
 
-### REST Facade (PetController)
+### REST Facades
 
-| Method | Path                | Description                                                                       |
-|--------|---------------------|-----------------------------------------------------------------------------------|
-| GET    | `/api/pets/{petId}` | Get pet by ID (`@Positive` validated)                                             |
-| GET    | `/api/pets?status=` | Find pets by status (default: `available`; validated: `available\|pending\|sold`) |
-| POST   | `/api/pets`         | Create a pet (`@Valid` body)                                                      |
+**PetController** (`/api/pets`):
+
+| Method | Path                | Description                                                                        |
+|--------|---------------------|------------------------------------------------------------------------------------|
+| GET    | `/api/pets/{petId}` | Get pet by ID (`@Positive` validated)                                              |
+| GET    | `/api/pets?status=` | Find pets by status (default: `available`; validated: `available\|pending\|sold`); **deprecated** |
+| POST   | `/api/pets`         | Create a pet (`@Valid` body)                                                       |
+| GET    | `/api/pets/internal/health` | `@Hidden` internal health check                                        |
+
+**StoreController** (`/api/orders`):
+
+| Method | Path                    | Description                                   |
+|--------|-------------------------|-----------------------------------------------|
+| GET    | `/api/orders/{orderId}` | Get order by ID (`@Positive` validated)       |
+| POST   | `/api/orders`           | Create order                                  |
+| DELETE | `/api/orders/{orderId}` | Delete order; **deprecated**                  |
+| GET    | `/api/orders/internal/inventory` | `@Hidden` inventory lookup           |
 
 ### Generated Code (`build/openapi/src/main/java/`)
 
@@ -61,11 +80,19 @@ swagger/
 - **Models**: `com.example.openapi.petstore.model.{Pet, Category, Tag, Order, User, ApiResponse}`
 - **Infrastructure**: `com.example.openapi.petstore.invoker.*`
 
+### Feign Infrastructure
+
+- `CorrelationIdInterceptor`: reads `correlationId` from MDC; generates UUID if absent; injects as `X-Correlation-ID` header
+- `PetStoreErrorDecoder`: 404 → `PetNotFoundException`; 4xx → `UpstreamClientException`; 5xx → `UpstreamServiceException`
+
 ### Exception Handling
 
 `GlobalExceptionHandler` maps:
 - `MethodArgumentNotValidException` → 400
 - `ConstraintViolationException` → 400
+- `PetNotFoundException` → 404
+- `UpstreamClientException` → 400
+- `UpstreamServiceException` → 502
 - `FeignException.NotFound` → 404
 - `FeignException` → 502
 - `Exception` → 500
@@ -109,10 +136,18 @@ When running locally:
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 
+## Tests
+
+- `PetControllerTest` (8 tests, `@WebMvcTest`): happy-path GET/POST, invalid status→400, negative ID→400, 404→404, blank name→400, upstream 502→502
+- `MainApplicationTests`: context-load only
+
+Missing tests: `StoreControllerTest` (GET/POST/DELETE order happy path + 404 + negative ID), upstream 4xx→400 via `UpstreamClientException`, blank `name` on `CreatePetRequest`
+
 ## Notes
 
-- Base package changed from `com.example.swagger` → `com.example.openapi`
-- Spec directory renamed from `swagger/` → `openapi/`
+- Base package: `com.example.openapi`; spec dir: `openapi/`
 - Generated packages: `com.example.openapi.petstore.{api,model,invoker}`
-- The project now **exposes** its own REST endpoints in addition to consuming Petstore
 - Authentication to Petstore uses Basic Auth via `BasicAuthRequestInterceptor`
+- Global `bearerAuth` security scheme in OpenAPI docs (Authorize button in Swagger UI)
+- `@Hidden` endpoints excluded from Swagger: `/api/pets/internal/health`, `/api/orders/internal/inventory`
+- Deprecated endpoints: `GET /api/pets` (find by status), `DELETE /api/orders/{orderId}`
