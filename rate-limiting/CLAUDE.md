@@ -180,6 +180,14 @@ Pure unit tests with Mockito (no Docker needed):
 - `RateLimitServiceTest` — token consumption, exhaustion, reset-time from probe, available-tokens
 - `RateLimitAspectTest` — header population, 429 throw, fail-open on Redis error, profile resolution, class-level annotation
 
+## UserContext Identifier Format
+
+Redis key prefixes:
+- `user:{value}` when `X-USER-ID` header is present and non-blank
+- `ip:{value}` when falling back to IP (from `X-Forwarded-For` first IP, or `RemoteAddr`)
+
+`UserContext` has a commented-out `getUserIdFromSecurityContext()` stub for future Spring Security integration.
+
 ## Dependencies
 
 ```gradle
@@ -190,3 +198,21 @@ implementation 'com.bucket4j:bucket4j_jdk17-lettuce:8.16.1'
 testImplementation 'org.springframework.boot:spring-boot-testcontainers'
 testImplementation 'org.testcontainers:junit-jupiter'
 ```
+
+## Missing Demos
+
+- Spring Security integration — extract user from `SecurityContext` instead of `X-USER-ID` header
+- Dynamic profile reload at runtime (actuator endpoint to update `RateLimitProperties` without restart)
+- Per-role rate limits (admin vs. regular user with different profiles)
+- `@RateLimit` on class level demo endpoint (currently only documented, not shown in `HomeController`)
+- Sliding window strategy (Bucket4j `SmoothlySpreadingRefill`) vs. fixed window comparison
+- Warm-up refill (`withInitialTokens`) for gradual ramp-up on startup
+- Distributed tracing integration — include `X-USER-ID` in MDC for correlated logs
+
+## Missing Tests
+
+- Class-level `@RateLimit` applied to a controller (integration test)
+- `RateLimitAspectTest`: unknown profile name → `IllegalArgumentException`
+- Status endpoint reflecting correct remaining count after partial consumption (unit level)
+- Stacked limits: first limit exhausted stops processing second limit (integration test)
+- `X-Forwarded-For` chain parsing in `UserContextTest` (multi-hop proxy scenario)
