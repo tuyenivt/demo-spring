@@ -50,12 +50,12 @@ websocket/
 
 ### Configuration
 
-| Class                        | Purpose                                                                             |
-|------------------------------|-------------------------------------------------------------------------------------|
-| `WebSocketConfig`            | STOMP broker setup, endpoint registration, transport limits                         |
-| `UserAuthChannelInterceptor` | Extract username from CONNECT headers; auto-generates `user-{timestamp}` if missing |
-| `WebSocketEventListener`     | Broadcast join/leave notifications on session events                                |
-| `WebSocketShutdownNotifier`  | `@PreDestroy` — broadcasts shutdown message before app stops                        |
+| Class                        | Purpose                                                                                                        |
+|------------------------------|----------------------------------------------------------------------------------------------------------------|
+| `WebSocketConfig`            | STOMP broker setup, endpoint registration, transport limits; declares `brokerTaskScheduler` bean for heartbeat |
+| `UserAuthChannelInterceptor` | Extract username from CONNECT headers; auto-generates `user-{timestamp}` if missing                            |
+| `WebSocketEventListener`     | Broadcast join/leave notifications on session events                                                           |
+| `WebSocketShutdownNotifier`  | `@PreDestroy` — broadcasts shutdown message before app stops                                                   |
 
 ### STOMP Destinations
 
@@ -75,7 +75,7 @@ websocket/
 - **ChatController**: `@MessageMapping` handlers
   - `handleChatMessage()` — broadcast to all; stores username in session attributes
   - `handlePrivateMessage()` — send to specific user; validates no self-messaging
-  - `handleNotificationSubscription()` — returns welcome notification on `/topic/notifications` subscribe
+  - `handleNotificationSubscription()` — `@SubscribeMapping("/notifications")` returns welcome notification directly to the subscriber (not broadcast to topic)
   - `handleHistorySubscription()` — returns last 50 messages on `/app/history` subscribe
 
 - **AdminController**: REST API (`/api/admin`)
