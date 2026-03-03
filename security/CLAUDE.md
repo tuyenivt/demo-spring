@@ -5,11 +5,11 @@ Spring Boot MVC application demonstrating Spring Security with role-based access
 ## Tech Stack
 
 - Java 21+ / Spring Boot 4
-- Spring Security (form-based authentication, method-level security)
-- Thymeleaf (server-side templates with Spring Security dialect)
-- H2 Database (embedded, unused)
+- Spring Security (form-based auth, method-level security)
+- Thymeleaf + `thymeleaf-extras-springsecurity6` (`sec:authorize` dialect)
+- H2 Database (embedded, unused — JPA dep present but no entities)
 - Lombok
-- JUnit 5 + Spring Security Test
+- JUnit 5 + Spring Security Test (`spring-security-test`)
 
 ## Project Structure
 
@@ -45,7 +45,7 @@ security/
 - **Password Encoding**: BCryptPasswordEncoder
 - **Method-Level Security**: @EnableMethodSecurity with @PreAuthorize support
 - **Remember-Me**: Cookie-based with 1-day validity
-- **Session Management**: Single session per user, auto-invalidation
+- **Session Management**: `maximumSessions(1)`, `maxSessionsPreventsLogin(false)` — new login replaces old session (does not block)
 - **Security Headers**: Frame options deny, CSP default-src 'self'
 - **Logout**: Session invalidation, JSESSIONID cookie deletion
 
@@ -84,10 +84,42 @@ security/
 ./gradlew :security:test
 ```
 
+## Tests
+
+### SecurityTests.java (10 tests, `@WebMvcTest` + `@Import(SecurityConfig.class)`)
+- `homeRequiresAuthentication` — unauthenticated redirect to `/my-login/`
+- `loginPageRedirectsToLoginPageWithTrailingSlash` — duplicate of above (redirect check)
+- `employeeCanAccessHome` — EMPLOYEE → `/` → 200
+- `employeeCannotAccessLeaders` — EMPLOYEE → `/leaders/` → 403
+- `employeeCannotAccessSystems` — EMPLOYEE → `/systems/` → 403
+- `managerCanAccessLeaders` — MANAGER → `/leaders/` → 200
+- `managerCannotAccessSystems` — MANAGER → `/systems/` → 403
+- `adminCanAccessSystems` — EMPLOYEE+ADMIN → `/systems/` → 200
+- `managerWithEmployeeCanAccessBothHomeAndLeaders` — multi-role access check
+- `accessDeniedPageIsAccessible` — unauthenticated → redirect
+- `accessDeniedPageIsAccessibleForAuthenticatedUser` — authenticated → 200
+
+### EncryptionTests.java (4 tests, no Spring context)
+- `testBCrypt` — `BCrypt.hashpw` + `BCrypt.checkpw`
+- `testBCryptPasswordEncoder` — `BCryptPasswordEncoder.encode` + `matches`
+- `testKeyGenerator` — `KeyGenerators.string().generateKey()`
+- `testEncryptor` — `Encryptors.delux` (AES-CBC) encrypt + decrypt roundtrip
+
 ## Key Files
 
 - `SecurityConfig.java` - All security rules, password encoding, session management
 - `home/index.html` - Role-based conditional rendering with `sec:authorize`
 - `login/index.html` - Login form with remember-me checkbox
-- `SecurityTests.java` - Comprehensive security integration tests
-- `EncryptionTests.java` - BCrypt and encryption examples
+- `SecurityTests.java` - Role-based access control tests
+- `EncryptionTests.java` - BCrypt and Spring Crypto API demos
+
+## Missing Demos
+
+- `@PreAuthorize` / `@PostAuthorize` in service layer (only configured, not demonstrated)
+- `@PreFilter` / `@PostFilter` for collection filtering
+- JWT / OAuth2 resource server (project uses form login only)
+- CSRF configuration (currently default — enabled for form login)
+- CORS configuration
+- Database-backed `UserDetailsService` (currently in-memory)
+- Persistent remember-me (`PersistentTokenRepository`)
+- `HttpSessionEventPublisher` for session registry cleanup
