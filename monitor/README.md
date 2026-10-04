@@ -25,7 +25,7 @@ docker compose -f docker/docker-compose.yml up -d
 ### Custom Business Metrics
 - `customer.access` - Counter tracking customer list accesses
 - `customer.transform` - Timer measuring transform operation duration
-- `customer.total` - Gauge showing total customer count
+- `customer.count` - Gauge showing total customer count
 - `db.query` - Timed repository query metric (`findAll`)
 
 ### Health Checks

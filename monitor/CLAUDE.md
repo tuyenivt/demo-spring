@@ -5,7 +5,7 @@
 Spring Boot application demonstrating monitoring and observability using Actuator, Prometheus, and Grafana.
 
 - **Java**: 25
-- **Spring Boot**: 3.5.10
+- **Spring Boot**: 4.1
 - **Database**: H2 (in-memory)
 
 ## Project Structure
@@ -23,7 +23,7 @@ monitor/
 │   ├── health/
 │   │   └── ExternalApiHealthIndicator.java # Custom health check (toggleable)
 │   ├── info/AppInfoContributor.java        # Custom /actuator/info contributor
-│   ├── metrics/CustomerMetrics.java        # customer.total Gauge (MeterBinder)
+│   ├── metrics/CustomerMetrics.java        # customer.count Gauge (MeterBinder)
 │   └── repository/CustomerRepository.java
 ├── src/main/resources/application.yml      # Configuration
 ├── src/gatling/java/.../CustomerSimulation.java  # Load testing
@@ -39,11 +39,12 @@ monitor/
 ## Key Dependencies
 
 - `spring-boot-starter-actuator` - Monitoring endpoints
-- `spring-boot-starter-aop` - Required for `@Timed`/`@Counted`/`@Observed` aspect processing
+- `spring-boot-starter-aspectj` - Required for `@Timed`/`@Counted`/`@Observed` aspect processing
 - `spring-boot-starter-data-jpa` - Data persistence
+- `spring-boot-starter-webmvc` - REST endpoints
+- `spring-boot-starter-zipkin` - Distributed tracing (Micrometer Tracing + Brave) with Zipkin export
 - `micrometer-registry-prometheus` - Prometheus metrics export
-- `micrometer-tracing-bridge-brave` - Distributed tracing
-- `zipkin-reporter-brave` - Zipkin integration
+- `spring-boot-h2console` - H2 web console support
 - `h2` - Embedded database
 - `lombok` - Boilerplate reduction
 - `io.gatling.gradle` - Load testing
@@ -62,7 +63,7 @@ monitor/
 
 - `customer.access` - Counter for customer list accesses (`@Counted`)
 - `customer.transform` - Timer for transform operation duration (`@Timed`); SLOs at 500ms/1s/3s, p50/p95/p99
-- `customer.total` - Gauge tracking total customers in DB (`CustomerMetrics` via `MeterBinder`)
+- `customer.count` - Gauge tracking total customers in DB (`CustomerMetrics` via `MeterBinder`); exported as `customer_count` (Prometheus strips a `_total` suffix from gauges)
 - `customer.list` / `customer.transform.observed` - Observation spans via `@Observed`
 - `db.query` - `@Timed` on `CustomerRepository.findAll()`; extra tags `entity=customer, operation=findAll`
 
@@ -164,7 +165,7 @@ Runs `CustomerSimulation`: ramps 5-100 users over 160 seconds hitting `/customer
 ## Tests
 
 Two test classes:
-- `SpringMonitorApplicationTests` (`@SpringBootTest`, random port) - 4 tests: health UP, readiness includes db+externalApi, prometheus contains custom metrics, metrics endpoint lists `customer.access`/`customer.transform`/`db.query`
+- `SpringMonitorApplicationTests` (`@SpringBootTest`, random port, `RestTestClient`, `@AutoConfigureMetrics` + `@AutoConfigureTracing`, span export disabled) - 5 tests: health UP, readiness includes db+externalApi, prometheus contains custom metrics, metrics endpoint lists `customer.access`/`db.query`, tracer is auto-configured (not no-op)
 - `RootControllerTest` (`@WebMvcTest`) - 3 tests: ping, customers list, unreliable bad request validation; mocks `CustomerRepository`, `ExternalApiHealthIndicator`, `Random`
 
 ```bash

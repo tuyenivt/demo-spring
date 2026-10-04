@@ -15,7 +15,7 @@ public class CustomerMetrics implements MeterBinder {
 
     @Override
     public void bindTo(MeterRegistry registry) {
-        Gauge.builder("customer.total", repository::count)
+        Gauge.builder("customer.count", repository::count)
                 .description("Total number of customers in the database")
                 .register(registry);
     }
