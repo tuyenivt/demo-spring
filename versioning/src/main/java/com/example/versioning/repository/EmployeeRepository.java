@@ -1,8 +1,8 @@
 package com.example.versioning.repository;
 
 import com.example.versioning.entity.Employee;
-import org.springframework.data.repository.CrudRepository;
-import org.springframework.data.repository.PagingAndSortingRepository;
+import org.springframework.data.repository.ListCrudRepository;
+import org.springframework.data.repository.ListPagingAndSortingRepository;
 
-public interface EmployeeRepository extends PagingAndSortingRepository<Employee, Long>, CrudRepository<Employee, Long> {
+public interface EmployeeRepository extends ListPagingAndSortingRepository<Employee, Long>, ListCrudRepository<Employee, Long> {
 }

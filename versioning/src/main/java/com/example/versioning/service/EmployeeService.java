@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.StreamSupport;
 
 @Service
 @RequiredArgsConstructor
@@ -18,13 +17,13 @@ public class EmployeeService {
     private final EmployeeRepository employeeRepository;
 
     public List<EmployeeResponseV1> getAllEmployeesV1() {
-        return StreamSupport.stream(employeeRepository.findAll().spliterator(), false)
+        return employeeRepository.findAll().stream()
                 .map(e -> new EmployeeResponseV1(e.getId(), e.getName(), e.getDepartment()))
                 .toList();
     }
 
     public List<EmployeeResponseV2> getAllEmployeesV2() {
-        return StreamSupport.stream(employeeRepository.findAll().spliterator(), false)
+        return employeeRepository.findAll().stream()
                 .map(e -> new EmployeeResponseV2(
                         e.getId(),
                         e.getName(),
@@ -54,7 +53,7 @@ public class EmployeeService {
     }
 
     public List<EmployeeResponse> getEmployeesForView() {
-        return StreamSupport.stream(employeeRepository.findAll().spliterator(), false)
+        return employeeRepository.findAll().stream()
                 .map(e -> new EmployeeResponse(
                         e.getId(),
                         e.getName(),

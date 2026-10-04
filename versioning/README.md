@@ -1,6 +1,6 @@
 # Versioning Demo
 
-Demonstrates four API versioning strategies in Spring Boot, with cross-cutting features including response envelopes, ETag caching, Micrometer metrics, feature-flag-controlled v1 lifecycle, and OpenAPI grouped docs.
+Demonstrates API versioning in Spring Boot 4 using Spring Framework's native API versioning (`spring.mvc.apiversion.*`, `@GetMapping(version = ...)`), with four strategies plus response envelopes, ETag caching, Micrometer metrics, RFC 9745 deprecation headers, feature-flag-controlled v1 lifecycle, and OpenAPI grouped docs.
 
 ## Quick Start
 
@@ -12,7 +12,24 @@ Server starts on `http://localhost:8080`.
 
 ## Prerequisites
 
-- Java 21+
+- Java 25
+
+## How Versions Are Resolved
+
+Configured in `application.properties`; Spring MVC resolves, parses and validates the version of every request before handler matching:
+
+```properties
+spring.mvc.apiversion.use.header=API-Version
+spring.mvc.apiversion.use.query-parameter=version
+spring.mvc.apiversion.use.media-type-parameter[application/vnd.company+json]=v
+spring.mvc.apiversion.supported=1,2
+spring.mvc.apiversion.default=2
+spring.mvc.apiversion.detect-supported=false
+```
+
+Resolvers are tried in order — header, query parameter, media type parameter, then the URI path resolver bean from `ApiVersionConfig` (`/v1/**` → 1, `/v2/**` and `/api/v2/**` → 2). The first one that finds a value wins; without one, the default version `2` applies. Versions are semantic (`1` = `1.0.0`), and a leading `v` is ignored.
+
+Resolvers are global, so any strategy can select the version of any versioned endpoint (e.g. `GET /api/reports` with `API-Version: 1`).
 
 ## Versioning Strategies
 
@@ -31,39 +48,39 @@ curl -i http://localhost:8080/v1/employees
 curl http://localhost:8080/api/v2/employees
 ```
 
-### 2. Custom Header Versioning
+### 2. Header Versioning
 
-Single URI; version is specified via the `Accept-version` header.
+Single URI; version is specified via the `API-Version` header (`@GetMapping(path = "/location", version = "2")`).
 
 ```bash
 # V2 (explicit)
-curl -H "Accept-version: v2" http://localhost:8080/location
+curl -H "API-Version: 2" http://localhost:8080/location
 
 # Omitting the header defaults to v2
 curl http://localhost:8080/location
 
 # Unsupported version → 400 with structured error
-curl -H "Accept-version: v3" http://localhost:8080/location
+curl -H "API-Version: 3" http://localhost:8080/location
 ```
 
 ### 3. Media Type Versioning (Content Negotiation)
 
-Version is expressed in the `Accept` header using a vendor MIME type.
+Version is a parameter of the vendor media type in the `Accept` header.
 
 ```bash
 # V1 product
-curl -H "Accept: application/vnd.company.v1+json" http://localhost:8080/api/products
+curl -H "Accept: application/vnd.company+json;v=1" http://localhost:8080/api/products
 
 # V2 product (adds description, sku)
-curl -H "Accept: application/vnd.company.v2+json" http://localhost:8080/api/products
+curl -H "Accept: application/vnd.company+json;v=2" http://localhost:8080/api/products
 
-# Unknown media type → 406 with structured error
-curl -H "Accept: application/vnd.company.v3+json" http://localhost:8080/api/products
+# Unsupported version → 400 with structured error
+curl -H "Accept: application/vnd.company+json;v=3" http://localhost:8080/api/products
 ```
 
 ### 4. Query Parameter Versioning
 
-Version passed as a query parameter. Default is `v2`.
+Version passed as a query parameter. Default is `2`.
 
 ```bash
 # Report V1 (compact: id, title, content)
@@ -92,7 +109,7 @@ All `/api/**` endpoints wrap their response body in a standard envelope:
 }
 ```
 
-V1 responses include `"deprecation": "2025-12-31"`.
+V1 responses include `"deprecation": "2025-12-31"` (the v1 sunset date).
 
 ## Version Discovery
 
@@ -106,7 +123,12 @@ curl http://localhost:8080/api/versions
     "current": "v2",
     "supported": ["v1", "v2"],
     "deprecated": ["v1"],
-    "strategies": ["uri-path", "custom-header", "media-type", "query-parameter"],
+    "strategies": [
+      "uri-path (/v1/**, /api/v2/**)",
+      "header (API-Version)",
+      "query-parameter (version)",
+      "media-type-parameter (application/vnd.company+json;v=)"
+    ],
     "v1": { "status": "deprecated", "sunset": "2025-12-31", "docs": "/v1/docs" },
     "v2": { "status": "stable", "docs": "/v2/docs" }
   },
@@ -128,7 +150,7 @@ curl -i -H 'If-None-Match: "<etag-value>"' http://localhost:8080/api/v2/employee
 
 ## Metrics
 
-Per-version request counts tracked by Micrometer and exposed via a custom actuator endpoint.
+Per-version request counts tracked by Micrometer and exposed via a custom actuator endpoint. The version label comes from the version Spring MVC resolved for the request.
 
 ```bash
 curl http://localhost:8080/actuator/api-versions
@@ -136,52 +158,56 @@ curl http://localhost:8080/actuator/api-versions
 
 ```json
 {
-  "v1": { "requests": 3, "lastSeen": "2026-02-12T10:00:00Z" },
-  "v2": { "requests": 12, "lastSeen": "2026-02-12T10:05:00Z" }
+  "v1": { "requests": 3, "lastUsed": "2026-02-12T10:00:00Z" },
+  "v2": { "requests": 12, "lastUsed": "2026-02-12T10:05:00Z" }
 }
 ```
 
 ## Deprecation Headers (V1)
 
-All v1 endpoints respond with:
+A `StandardApiVersionDeprecationHandler` bean adds these headers to every request resolved to version 1 (`/v1/**`, `?version=1`, `API-Version: 1`, `;v=1`):
 
 ```
-Deprecation: true
-Sunset: Sat, 31 Dec 2025 23:59:59 GMT
-Link: </v2/employees>; rel="successor-version"
+Deprecation: @1735689600
+Link: </api/versions>; rel="deprecation"; type="text/html"
+Sunset: Wed, 31 Dec 2025 23:59:59 GMT
 ```
+
+`Deprecation` is an RFC 9745 timestamp (`@` + epoch seconds, here 2025-01-01T00:00:00Z); `Sunset` is an RFC 8594 HTTP date.
 
 ## V1 Feature Flag
 
 V1 can be disabled at startup via a Spring profile or property.
 
 ```bash
-# Disable V1 entirely (EmployeeControllerV1 excluded, /api/versions shows only v2)
+# Disable V1 entirely
 ./gradlew :versioning:bootRun --args='--spring.profiles.active=v1-disabled'
 ```
 
+With `api.v1.enabled=false`, `EmployeeControllerV1` and the deprecation handler are not created, `/api/versions` shows only v2, and the profile also sets `spring.mvc.apiversion.supported=2`, so version 1 is rejected with 400 on versioned endpoints.
+
 Property file equivalents:
 - `application-v1-enabled.properties` → `api.v1.enabled=true`
-- `application-v1-disabled.properties` → `api.v1.enabled=false`
+- `application-v1-disabled.properties` → `api.v1.enabled=false`, `spring.mvc.apiversion.supported=2`
 
 ## Error Response
 
-Unsupported version requests return a structured error:
+Unparsable or unsupported versions (`InvalidApiVersionException`) return a structured error:
 
 ```json
 {
   "error": "Unsupported API version",
-  "requestedVersion": "v3",
-  "supportedVersions": ["v1", "v2"],
-  "currentVersion": "v2",
+  "requestedVersion": "3.0.0",
+  "supportedVersions": ["1", "2"],
+  "currentVersion": "2",
   "documentation": "/api/versions"
 }
 ```
 
 | Status | Trigger |
 |--------|---------|
-| 400 | Unknown value in `Accept-version` header or `?version` query param |
-| 406 | Unknown vendor media type in `Accept` header |
+| 400 | Unparsable version, or version not in `spring.mvc.apiversion.supported` (any strategy) |
+| 404 | Supported version, but the endpoint has no handler for it (e.g. `API-Version: 1` on `/location`) |
 
 ## OpenAPI / Swagger UI
 
@@ -198,7 +224,7 @@ SpringDoc groups endpoints by version. Navigate to `http://localhost:8080/swagge
 | GET    | /api/v2/employees      | List employees V2 with envelope                  |
 | GET    | /api/v2/employees/{id} | Get employee V2 with ETag                        |
 | GET    | /v2/schedule           | Schedule (BasePathAware)                         |
-| GET    | /location              | Header-versioned location                        |
+| GET    | /location              | Header-versioned location (v2 only)              |
 | GET    | /v2/location           | Path-versioned location alias                    |
 | GET    | /api/products          | Media-type-versioned product                     |
 | GET    | /api/reports           | Query-param-versioned report                     |
@@ -212,9 +238,9 @@ SpringDoc groups endpoints by version. Navigate to `http://localhost:8080/swagge
 - Group breaking changes into a major version bump (v1 → v2)
 - Set a sunset date when releasing a new major version (announce 6+ months ahead)
 - Keep old versions independently deployable behind a load balancer
-  - Route by URI prefix (`/v1/`, `/v2/`) or custom header value
+  - Route by URI prefix (`/v1/`, `/v2/`) or header value
 - Cherry-pick bug fixes from the new version to the old version
-- Disable old versions cleanly with `@ConditionalOnProperty` once traffic drops to zero
+- Disable old versions cleanly with a feature flag once traffic drops to zero
 
 ## Testing
 
@@ -224,15 +250,15 @@ SpringDoc groups endpoints by version. Navigate to `http://localhost:8080/swagge
 
 Integration test suites (`VersioningIntegrationTest`):
 
-| Nested Class               | What it covers                                  |
-|----------------------------|-------------------------------------------------|
-| `UriPathVersioning`        | V2 routing, V1 deprecation headers              |
-| `HeaderVersioning`         | Accept-version routing, default, 400 on unknown |
-| `MediaTypeVersioning`      | V1/V2 media types, 406 on unknown               |
-| `QueryParameterVersioning` | Report versions, default, 400 on unknown        |
-| `JsonViewFieldEvolution`   | V1 hides V2 fields, V2 exposes all              |
-| `ETagBehavior`             | 304 on match, different ETags across versions   |
-| `DiscoveryAndEnvelope`     | /api/versions payload, envelope shape           |
-| `VersionContract`          | Parameterized field contracts, actuator metrics |
+| Nested Class               | What it covers                                                        |
+|----------------------------|-----------------------------------------------------------------------|
+| `UriPathVersioning`        | V2 routing, V1 Deprecation/Sunset/Link headers, none on V2            |
+| `HeaderVersioning`         | `API-Version` routing, default, 400 on unsupported/unparsable, 404 on no handler |
+| `MediaTypeVersioning`      | `;v=1` / `;v=2`, deprecation header on v1, 400 on unsupported         |
+| `QueryParameterVersioning` | Report versions, default, same endpoint via header, 400 on unknown    |
+| `JsonViewFieldEvolution`   | V1 hides V2 fields, V2 exposes all                                    |
+| `ETagBehavior`             | 304 on match, different ETags across versions                         |
+| `DiscoveryAndEnvelope`     | /api/versions payload, envelope shape                                 |
+| `VersionContract`          | Parameterized field contracts, actuator metrics per version           |
 
-`V1DisabledProfileIntegrationTest` (profile `v1-disabled`): verifies 404 on `/v1/employees` and single-entry discovery.
+`V1DisabledProfileIntegrationTest` (profile `v1-disabled`): 404 on `/v1/employees`, 400 for `?version=1`, single-entry discovery.

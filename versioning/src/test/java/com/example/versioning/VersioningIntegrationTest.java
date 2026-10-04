@@ -6,8 +6,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -21,6 +21,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class VersioningIntegrationTest {
+
+    // RFC 9745 Deprecation (@epoch-seconds) and RFC 8594 Sunset (HTTP-date) values configured in ApiVersionConfig
+    static final String V1_DEPRECATION = "@1735689600";
+    static final String V1_SUNSET = "Wed, 31 Dec 2025 23:59:59 GMT";
 
     @Autowired
     private MockMvc mockMvc;
@@ -39,9 +43,17 @@ class VersioningIntegrationTest {
         void shouldIncludeDeprecationHeadersForV1() throws Exception {
             mockMvc.perform(get("/v1/employees"))
                     .andExpect(status().isOk())
-                    .andExpect(header().string("Deprecation", "true"))
-                    .andExpect(header().string("Sunset", "Sat, 31 Dec 2025 23:59:59 GMT"))
-                    .andExpect(header().string("Link", "</v2/employees>; rel=\"successor-version\""));
+                    .andExpect(header().string("Deprecation", V1_DEPRECATION))
+                    .andExpect(header().string("Sunset", V1_SUNSET))
+                    .andExpect(header().string("Link", "</api/versions>; rel=\"deprecation\"; type=\"text/html\""));
+        }
+
+        @Test
+        void shouldNotIncludeDeprecationHeadersForV2() throws Exception {
+            mockMvc.perform(get("/api/v2/employees"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().doesNotExist("Deprecation"))
+                    .andExpect(header().doesNotExist("Sunset"));
         }
     }
 
@@ -50,8 +62,7 @@ class VersioningIntegrationTest {
 
         @Test
         void shouldRouteToV2ByHeader() throws Exception {
-            mockMvc.perform(get("/location")
-                            .header("Accept-version", "v2"))
+            mockMvc.perform(get("/location").header("API-Version", "2"))
                     .andExpect(status().isOk())
                     .andExpect(content().string(containsString("v2")));
         }
@@ -65,11 +76,25 @@ class VersioningIntegrationTest {
 
         @Test
         void shouldReturnBadRequestForUnsupportedHeaderVersion() throws Exception {
-            mockMvc.perform(get("/location").header("Accept-version", "v3"))
+            mockMvc.perform(get("/location").header("API-Version", "3"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.error").value("Unsupported API version"))
-                    .andExpect(jsonPath("$.requestedVersion").value("v3"))
-                    .andExpect(jsonPath("$.currentVersion").value("v2"));
+                    .andExpect(jsonPath("$.requestedVersion").value("3.0.0"))
+                    .andExpect(jsonPath("$.currentVersion").value("2"));
+        }
+
+        @Test
+        void shouldReturnBadRequestForUnparsableHeaderVersion() throws Exception {
+            mockMvc.perform(get("/location").header("API-Version", "latest"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.requestedVersion").value("latest"));
+        }
+
+        @Test
+        void shouldReturnNotFoundWhenSupportedVersionHasNoHandler() throws Exception {
+            // v1 is supported globally, but /location only has a v2 handler
+            mockMvc.perform(get("/location").header("API-Version", "1"))
+                    .andExpect(status().isNotFound());
         }
     }
 
@@ -78,8 +103,9 @@ class VersioningIntegrationTest {
 
         @Test
         void shouldReturnProductV1WithMediaType() throws Exception {
-            mockMvc.perform(get("/api/products").accept("application/vnd.company.v1+json"))
+            mockMvc.perform(get("/api/products").accept("application/vnd.company+json;v=1"))
                     .andExpect(status().isOk())
+                    .andExpect(header().string("Deprecation", V1_DEPRECATION))
                     .andExpect(jsonPath("$.data.name").value("Widget"))
                     .andExpect(jsonPath("$.data.price").value(29.99))
                     .andExpect(jsonPath("$.data.description").doesNotExist())
@@ -89,7 +115,7 @@ class VersioningIntegrationTest {
 
         @Test
         void shouldReturnProductV2WithMediaType() throws Exception {
-            mockMvc.perform(get("/api/products").accept("application/vnd.company.v2+json"))
+            mockMvc.perform(get("/api/products").accept("application/vnd.company+json;v=2"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.name").value("Widget"))
                     .andExpect(jsonPath("$.data.price").value(29.99))
@@ -100,9 +126,9 @@ class VersioningIntegrationTest {
         }
 
         @Test
-        void shouldReturnNotAcceptableForUnsupportedMediaType() throws Exception {
-            mockMvc.perform(get("/api/products").accept("application/vnd.company.v3+json"))
-                    .andExpect(status().isNotAcceptable())
+        void shouldReturnBadRequestForUnsupportedMediaTypeVersion() throws Exception {
+            mockMvc.perform(get("/api/products").accept("application/vnd.company+json;v=3"))
+                    .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.error").value("Unsupported API version"))
                     .andExpect(jsonPath("$.documentation").value("/api/versions"));
         }
@@ -130,11 +156,20 @@ class VersioningIntegrationTest {
         }
 
         @Test
+        void shouldResolveSameEndpointFromHeader() throws Exception {
+            // Resolvers are global: any configured strategy can select the version of any versioned endpoint
+            mockMvc.perform(get("/api/reports").header("API-Version", "1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.author").doesNotExist())
+                    .andExpect(jsonPath("$.meta.apiVersion").value("v1"));
+        }
+
+        @Test
         void shouldReturnBadRequestForUnsupportedQueryVersion() throws Exception {
             mockMvc.perform(get("/api/reports?version=3"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.error").value("Unsupported API version"))
-                    .andExpect(jsonPath("$.requestedVersion").value("3"))
+                    .andExpect(jsonPath("$.requestedVersion").value("3.0.0"))
                     .andExpect(jsonPath("$.supportedVersions", hasSize(2)));
         }
     }
@@ -231,8 +266,10 @@ class VersioningIntegrationTest {
         @Test
         void shouldExposeVersionUsageEndpoint() throws Exception {
             mockMvc.perform(get("/api/v2/employees")).andExpect(status().isOk());
+            mockMvc.perform(get("/v1/employees")).andExpect(status().isOk());
             mockMvc.perform(get("/actuator/api-versions"))
                     .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.v1.requests").value(greaterThanOrEqualTo(1)))
                     .andExpect(jsonPath("$.v2.requests").value(greaterThanOrEqualTo(1)));
         }
     }
@@ -257,6 +294,13 @@ class V1DisabledProfileIntegrationTest {
     void shouldDisableV1EndpointsWhenProfileDisablesV1() throws Exception {
         mockMvc.perform(get("/v1/employees"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldRejectV1OnVersionedEndpoints() throws Exception {
+        mockMvc.perform(get("/api/reports?version=1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.supportedVersions", hasSize(1)));
     }
 
     @Test

@@ -18,13 +18,13 @@ public class EmployeeViewController {
 
     private final EmployeeService employeeService;
 
-    @GetMapping(params = "version=1")
+    @GetMapping(version = "1")
     @JsonView(Views.V1.class)
     public List<EmployeeResponse> getV1View() {
         return employeeService.getEmployeesForView();
     }
 
-    @GetMapping(params = "version=2")
+    @GetMapping(version = "2")
     @JsonView(Views.V2.class)
     public List<EmployeeResponse> getV2View() {
         return employeeService.getEmployeesForView();

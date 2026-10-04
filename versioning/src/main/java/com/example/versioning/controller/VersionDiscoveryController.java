@@ -1,5 +1,6 @@
 package com.example.versioning.controller;
 
+import com.example.versioning.config.ApiVersionConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,10 +36,15 @@ public class VersionDiscoveryController {
                 "current", "v2",
                 "supported", supported,
                 "deprecated", v1Enabled ? List.of("v1") : List.of(),
-                "strategies", List.of("uri-path", "custom-header", "media-type", "query-parameter"),
+                "strategies", List.of(
+                        "uri-path (/v1/**, /api/v2/**)",
+                        "header (API-Version)",
+                        "query-parameter (version)",
+                        "media-type-parameter (application/vnd.company+json;v=)"
+                ),
                 "v1", Map.of(
                         "status", v1Enabled ? "deprecated" : "disabled",
-                        "sunset", "2025-12-31",
+                        "sunset", ApiVersionConfig.V1_SUNSET_DATE.toLocalDate().toString(),
                         "docs", "/v1/docs"
                 ),
                 "v2", Map.of(

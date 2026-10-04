@@ -8,29 +8,21 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Demonstrates media type versioning using vendor-specific MIME types.
- * Client specifies version via Accept header with custom media type.
+ * Demonstrates media type versioning: the version is a parameter of a vendor media type.
+ * Request with: Accept: application/vnd.company+json;v=1 (or v=2)
  */
 @RestController
 @RequestMapping("/api/products")
 public class ProductController {
 
-    /**
-     * V1 endpoint using custom media type.
-     * Request with: Accept: application/vnd.company.v1+json
-     */
-    @Operation(summary = "Get product (v1 media type)", deprecated = true)
-    @GetMapping(produces = "application/vnd.company.v1+json")
+    @Operation(summary = "Get product (v1)", deprecated = true)
+    @GetMapping(version = "1")
     public ProductV1 getProductV1() {
         return new ProductV1("Widget", 29.99);
     }
 
-    /**
-     * V2 endpoint using custom media type.
-     * Request with: Accept: application/vnd.company.v2+json
-     */
-    @Operation(summary = "Get product (v2 media type)")
-    @GetMapping(produces = "application/vnd.company.v2+json")
+    @Operation(summary = "Get product (v2)")
+    @GetMapping(version = "2")
     public ProductV2 getProductV2() {
         return new ProductV2("Widget", 29.99, "Premium quality widget", "WIDGET-001");
     }

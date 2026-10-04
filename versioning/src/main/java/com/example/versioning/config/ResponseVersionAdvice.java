@@ -9,14 +9,12 @@ import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.server.ServletServerHttpResponse;
-import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
-@Component
 @ControllerAdvice
 public class ResponseVersionAdvice implements ResponseBodyAdvice<Object> {
 
@@ -50,10 +48,8 @@ public class ResponseVersionAdvice implements ResponseBodyAdvice<Object> {
             return body;
         }
 
-        var apiVersion = String.valueOf(
-                servletRequest.getServletRequest().getAttribute(ApiVersionInterceptor.API_VERSION_ATTRIBUTE)
-        );
-        var deprecation = "v1".equals(apiVersion) ? "2025-12-31" : null;
+        var apiVersion = ApiVersionInterceptor.currentVersion(servletRequest.getServletRequest());
+        var deprecation = "v1".equals(apiVersion) ? ApiVersionConfig.V1_SUNSET_DATE.toLocalDate().toString() : null;
         var timestamp = Instant.now().truncatedTo(ChronoUnit.DAYS);
 
         return new ApiResponse<>(body, new ApiMeta(apiVersion, deprecation, timestamp));
