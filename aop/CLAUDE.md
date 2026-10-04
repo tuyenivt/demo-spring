@@ -189,7 +189,7 @@ Keyed by `method signature + caller thread name`.
 ```
 
 ## Dependencies
-- `spring-boot-starter-aop` — Core AOP support
-- `spring-boot-starter-web` — REST endpoints
+- `spring-boot-starter-aspectj` — Core AOP support
+- `spring-boot-starter-webmvc` — REST endpoints
 - Lombok — Annotation processing
 - JUnit 5 + `OutputCaptureExtension` — Testing with log assertion

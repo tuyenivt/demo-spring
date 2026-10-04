@@ -44,6 +44,16 @@ public class AccountController {
         accountService.processBatch(factor);
     }
 
+    @PostMapping("/transfer")
+    public String transfer(@RequestParam int fromId, @RequestParam int toId, @RequestParam int amount) {
+        return accountService.transferFundsWithRetry(fromId, toId, amount);
+    }
+
+    @PostMapping("/transfer/fail")
+    public String transferAndFail(@RequestParam int fromId, @RequestParam int toId, @RequestParam int amount) {
+        return accountService.transferFundsAndFail(fromId, toId, amount);
+    }
+
     @GetMapping("/pricing/{amountCents}")
     public BigDecimal calculatePrice(@PathVariable int amountCents) {
         return accountService.calculatePrice(amountCents);

@@ -6,6 +6,8 @@ import com.example.aop.aspect.audit.Audited;
 import com.example.aop.aspect.feature.FeatureEnabled;
 import com.example.aop.aspect.metrics.Timed;
 import com.example.aop.aspect.ratelimit.RateLimited;
+import com.example.aop.aspect.retry.Retryable;
+import com.example.aop.aspect.transaction.DemoTransactional;
 import com.example.aop.aspect.validation.Max;
 import com.example.aop.aspect.validation.Min;
 import com.example.aop.aspect.validation.NotNull;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -25,6 +28,7 @@ import java.util.List;
 public class AccountService {
 
     private final AccountDao accountDao;
+    private final AtomicInteger transferAttempts = new AtomicInteger(0);
 
     @ExecutionLogging
     @MonitorPerformance(thresholdMs = 500)
@@ -85,6 +89,28 @@ public class AccountService {
     @Timed(name = "pricing.calculate")
     public BigDecimal calculatePrice(int amountCents) {
         return BigDecimal.valueOf(amountCents).movePointLeft(2).multiply(new BigDecimal("0.90"));
+    }
+
+    /**
+     * Demonstrates aspect ordering: DemoTransactionAspect (@Order -1) wraps RetryAspect (@Order 0),
+     * so the first attempt fails transiently and is retried inside a single BEGIN/COMMIT.
+     */
+    @DemoTransactional
+    @Retryable(maxAttempts = 3, retryOn = IllegalStateException.class)
+    public String transferFundsWithRetry(int fromId, int toId, int amount) {
+        if (transferAttempts.incrementAndGet() == 1) {
+            throw new IllegalStateException("Transient transfer failure on first attempt");
+        }
+        return "Transferred " + amount + " from account " + fromId + " to account " + toId;
+    }
+
+    @DemoTransactional
+    public String transferFundsAndFail(int fromId, int toId, int amount) {
+        throw new RuntimeException("simulated transfer failure from account " + fromId + " to account " + toId);
+    }
+
+    public void resetTransferCounter() {
+        transferAttempts.set(0);
     }
 
     /**
