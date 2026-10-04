@@ -6,9 +6,10 @@ Real-time bidirectional communication demo using Spring Boot WebSocket with STOM
 
 ## Tech Stack
 
-- Spring Boot WebSocket + STOMP
+- Java 25, Spring Boot 4.1 WebSocket + STOMP
 - SockJS fallback for browser compatibility
-- Virtual threads enabled (Java 21+)
+- Jackson 3 for STOMP payloads (Boot auto-configured `JsonMapper`; DTOs use `com.fasterxml.jackson.annotation` annotations)
+- Virtual threads enabled
 - Lombok for boilerplate reduction
 
 ## Project Structure
@@ -21,7 +22,7 @@ websocket/
 │   │   ├── WebSocketConfig.java              # STOMP/WebSocket configuration
 │   │   ├── UserAuthChannelInterceptor.java   # Username extraction from headers
 │   │   ├── WebSocketEventListener.java       # Connect/disconnect events
-│   │   └── WebSocketShutdownNotifier.java    # @PreDestroy shutdown broadcast
+│   │   └── WebSocketShutdownNotifier.java    # Shutdown broadcast on ContextClosedEvent
 │   ├── constant/
 │   │   └── WebSocketDestinations.java        # Destination constants + message strings
 │   ├── controller/
@@ -55,7 +56,7 @@ websocket/
 | `WebSocketConfig`            | STOMP broker setup, endpoint registration, transport limits; declares `brokerTaskScheduler` bean for heartbeat |
 | `UserAuthChannelInterceptor` | Extract username from CONNECT headers; auto-generates `user-{timestamp}` if missing                            |
 | `WebSocketEventListener`     | Broadcast join/leave notifications on session events                                                           |
-| `WebSocketShutdownNotifier`  | `@PreDestroy` — broadcasts shutdown message before app stops                                                   |
+| `WebSocketShutdownNotifier`  | `@EventListener(ContextClosedEvent)` — broadcasts shutdown message before the broker/sessions are stopped      |
 
 ### STOMP Destinations
 
@@ -160,11 +161,11 @@ spring:
     virtual:
       enabled: true
   jackson:
-    serialization:
-      write-dates-as-timestamps: false
     deserialization:
       fail-on-unknown-properties: false
 ```
+
+Jackson 3 writes `java.time` values as ISO-8601 strings by default; `ChatResponse`/`ErrorResponse` also pin the format with `@JsonFormat`.
 
 ## Important Notes
 
@@ -176,7 +177,11 @@ spring:
 
 ## Testing
 
-Integration tests use `WebSocketStompClient` + `SockJsClient` over a random port. Run with:
+Integration tests use `WebSocketStompClient` + `SockJsClient` (with `JacksonJsonMessageConverter`) over a random port:
+- `WebSocketIntegrationTests` (`@SpringBootTest(RANDOM_PORT)`) — broadcast, private message, validation error, join notification; sessions disconnected after each test
+- `ShutdownNotificationTests` — starts the app with `SpringApplication.run`, subscribes to `/topic/notifications`, closes the context and expects the shutdown notification
+
+Run with:
 
 ```bash
 ./gradlew websocket:test

@@ -8,8 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
-import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
@@ -20,6 +19,7 @@ import org.springframework.web.socket.sockjs.client.WebSocketTransport;
 
 import java.lang.reflect.Type;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -36,17 +36,18 @@ class WebSocketIntegrationTests {
 
     private WebSocketStompClient stompClient;
 
+    private final List<StompSession> sessions = new ArrayList<>();
+
     @BeforeEach
     void setUp() {
         List<Transport> transports = List.of(new WebSocketTransport(new StandardWebSocketClient()));
         this.stompClient = new WebSocketStompClient(new SockJsClient(transports));
-        var converter = new MappingJackson2MessageConverter();
-        converter.setObjectMapper(Jackson2ObjectMapperBuilder.json().build());
-        this.stompClient.setMessageConverter(converter);
+        this.stompClient.setMessageConverter(new JacksonJsonMessageConverter());
     }
 
     @AfterEach
     void tearDown() {
+        sessions.forEach(StompSession::disconnect);
         if (stompClient != null) {
             stompClient.stop();
         }
@@ -107,7 +108,7 @@ class WebSocketIntegrationTests {
     private StompSession connect(String username) throws Exception {
         var connectHeaders = new StompHeaders();
         connectHeaders.add("username", username);
-        return stompClient.connectAsync(
+        var session = stompClient.connectAsync(
                 "http://localhost:" + localServerPort + "/ws",
                 new WebSocketHttpHeaders(),
                 connectHeaders,
@@ -119,6 +120,8 @@ class WebSocketIntegrationTests {
                     }
                 }
         ).get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+        sessions.add(session);
+        return session;
     }
 
     private <T> CompletableFuture<T> subscribe(StompSession session, String destination, Class<T> payloadType) {

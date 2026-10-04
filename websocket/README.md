@@ -44,3 +44,4 @@
 - Private routing (`/app/chat.private` → `/user/queue/private`)
 - Validation error path (`/user/queue/errors`)
 - Join notification (`/topic/notifications`)
+- Shutdown notification on context close (`ShutdownNotificationTests`, runs the app in its own context)
