@@ -18,11 +18,11 @@ spring:
       simple:
         # Fair dispatch: one message at a time per worker
         prefetch: 1
-        # Default retry configuration
+        # Default retry configuration (1 attempt + 2 retries)
         retry:
           enabled: true
           initial-interval: 1000
-          max-attempts: 3
+          max-retries: 2
           max-interval: 10000
           multiplier: 2.0
 
@@ -31,10 +31,18 @@ management:
   health:
     rabbit:
       enabled: true
+  endpoint:
+    health:
+      show-details: always
   endpoints:
     web:
       exposure:
         include: health,info
+
+# Run all pattern demos on startup (DemoRunner)
+demo:
+  runner:
+    enabled: true
 
 logging:
   level:

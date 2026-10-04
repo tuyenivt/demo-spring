@@ -12,7 +12,7 @@ import java.time.Instant;
 @Component
 public class ReminderConsumer {
 
-    @RabbitListener(queues = RabbitMQConfig.REMINDER_QUEUE)
+    @RabbitListener(id = "reminder", queues = RabbitMQConfig.REMINDER_QUEUE)
     public void handleReminder(Reminder reminder) {
         log.info("[REMINDER] Delayed reminder received at {}: {}", Instant.now(), reminder);
         log.info("[REMINDER] Sending notification to user {}: {}", reminder.getUserId(), reminder.getMessage());

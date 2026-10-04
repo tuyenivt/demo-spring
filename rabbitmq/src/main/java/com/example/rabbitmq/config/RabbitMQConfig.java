@@ -1,13 +1,14 @@
 package com.example.rabbitmq.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.*;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.boot.amqp.autoconfigure.RabbitTemplateCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+@Slf4j
 @Configuration
 public class RabbitMQConfig {
 
@@ -15,16 +16,32 @@ public class RabbitMQConfig {
     // Message Converter (JSON instead of Java Serialization)
     // ===========================================
 
+    // Boot applies this converter to the auto-configured RabbitTemplate and listener containers
     @Bean
     public MessageConverter jsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+        return new JacksonJsonMessageConverter();
     }
 
+    // ===========================================
+    // Publisher Confirms & Returns
+    // ===========================================
+
+    // publisher-confirm-type=correlated -> broker acks/nacks every publish
+    // publisher-returns=true -> Boot sets mandatory=true, so unroutable messages are returned
     @Bean
-    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
-        var template = new RabbitTemplate(connectionFactory);
-        template.setMessageConverter(jsonMessageConverter());
-        return template;
+    public RabbitTemplateCustomizer publisherCallbacksCustomizer() {
+        return template -> {
+            template.setConfirmCallback((correlationData, ack, cause) -> {
+                var id = correlationData != null ? correlationData.getId() : null;
+                if (ack) {
+                    log.debug("[CONFIRM] Broker acknowledged message {}", id);
+                } else {
+                    log.error("[CONFIRM] Broker rejected message {}: {}", id, cause);
+                }
+            });
+            template.setReturnsCallback(returned -> log.warn("[RETURN] Unroutable message (exchange={}, routingKey={}): {} {}",
+                    returned.getExchange(), returned.getRoutingKey(), returned.getReplyCode(), returned.getReplyText()));
+        };
     }
 
     // ===========================================

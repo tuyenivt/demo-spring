@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class RpcConsumer {
 
-    @RabbitListener(queues = RabbitMQConfig.RPC_QUEUE)
+    @RabbitListener(id = "rpc", queues = RabbitMQConfig.RPC_QUEUE)
     public RpcResponse handleRpcRequest(RpcRequest request) {
         log.info("Received RPC request: {}", request);
         var response = new RpcResponse(request.getId(), "Reply to: " + request.getMessage());

@@ -4,17 +4,20 @@
 
 Spring Boot application demonstrating 6 common RabbitMQ messaging patterns with JSON serialization and best practices.
 
+- **Java**: 25
+- **Spring Boot**: 4.1 (Spring AMQP 4.1)
+
 ## Project Structure
 
 ```
 rabbitmq/
 ├── build.gradle
-└── src/main/
-    ├── java/com/example/rabbitmq/
+└── src/
+    ├── main/java/com/example/rabbitmq/
     │   ├── Application.java           # Spring Boot main class
-    │   ├── DemoRunner.java            # Runs all pattern demos (CommandLineRunner)
+    │   ├── DemoRunner.java            # Runs all pattern demos (CommandLineRunner, `demo.runner.enabled`)
     │   ├── config/
-    │   │   └── RabbitMQConfig.java    # All exchanges, queues, bindings + RabbitTemplate
+    │   │   └── RabbitMQConfig.java    # Exchanges, queues, bindings, JSON converter, publisher callbacks
     │   ├── producer/
     │   │   ├── RpcProducer.java       # RPC pattern
     │   │   ├── NotificationProducer.java  # Fanout
@@ -40,8 +43,10 @@ rabbitmq/
     │   └── exception/
     │       ├── PaymentValidationException.java   # Unrecoverable → DLQ
     │       └── PaymentProcessingException.java   # Recoverable → requeue
-    └── resources/
-        └── application.yml            # Externalized configuration
+    ├── main/resources/
+    │   └── application.yml            # Externalized configuration
+    └── test/java/com/example/rabbitmq/
+        └── RabbitMqIntegrationTest.java  # Testcontainers RabbitMQ, all patterns end-to-end
 ```
 
 ## Messaging Patterns
@@ -57,15 +62,15 @@ rabbitmq/
 
 ## Key Features
 
-- **JSON Serialization**: `Jackson2JsonMessageConverter` on `RabbitTemplate` + listener container
-- **Publisher Confirms**: `publisher-confirm-type: correlated` + `publisher-returns: true` enabled; no `ConfirmCallback` wired
+- **JSON Serialization**: `JacksonJsonMessageConverter` (Jackson 3) bean; Boot applies it to the auto-configured `RabbitTemplate` and listener containers
+- **Publisher Confirms & Returns**: `publisher-confirm-type: correlated` + `publisher-returns: true` (Boot sets `mandatory=true`); a `RabbitTemplateCustomizer` wires a `ConfirmCallback` (logs broker ack/nack) and `ReturnsCallback` (logs unroutable messages)
+- **Listener IDs**: every `@RabbitListener` has an `id` (`rpc`, `emailNotification`, `smsNotification`, `task`, `highPriorityOrder`, `normalOrder`, `payment`, `failedPayment`, `reminder`)
 - **Manual Acknowledgment**: `TaskConsumer` and `PaymentConsumer` use `ackMode = "MANUAL"`
 - **ACK Strategy in PaymentConsumer**: `basicReject(false)` for `PaymentValidationException` (→ DLQ), `basicNack(false, true)` for `PaymentProcessingException` (recoverable, requeue)
-- **Listener Retry**: Spring AMQP retry enabled (3 attempts, initial 1s, multiplier 2.0, max 10s)
+- **Listener Retry**: Spring AMQP retry enabled (`max-retries: 2` = 3 attempts, initial 1s, multiplier 2.0, max 10s)
 - **Fair Dispatch**: Global `prefetch: 1` in `application.yml`
-- **Health Check**: Actuator endpoint at `/actuator/health`
+- **Health Check**: `/actuator/health` (details shown, includes `rabbit` with broker version)
 - **Externalized Config**: Environment variables for connection settings
-- **Tests**: None written yet (`spring-rabbit-test` dependency present)
 
 ## Configuration Constants
 
@@ -84,7 +89,17 @@ All exchange/queue names are defined in `RabbitMQConfig`:
 
 - `spring-boot-starter-amqp` - Spring AMQP for RabbitMQ
 - `spring-boot-starter-actuator` - Health checks
+- `spring-boot-starter-webmvc` - Serves the actuator endpoints over HTTP
 - `lombok` - Boilerplate reduction
+- Test: `spring-boot-starter-amqp-test` (`spring-rabbit-test`), `spring-boot-starter-actuator-test`, `spring-boot-starter-webmvc-test`, `spring-boot-testcontainers`, `testcontainers-rabbitmq`
+
+## Tests
+
+`RabbitMqIntegrationTest` (`@SpringBootTest`, random port, `demo.runner.enabled=false`):
+- RabbitMQ via Testcontainers (`rabbitmq:4.2-management-alpine`), declared as a `@Bean @ServiceConnection` in a nested `@TestConfiguration`
+- `@RabbitListenerTest(capture = true)` + `RabbitListenerTestHarness` asserts what each listener (by `id`) received
+- 8 tests: RPC reply, fanout to email + SMS, work queue, direct routing by priority, invalid payment dead-lettered, reminder delivered after the TTL, publisher confirm ack + unroutable message returned (`NO_ROUTE`), `/actuator/health/rabbit` UP (`RestTestClient`)
+- Requires Docker; the reminder test waits for the 10s TTL
 
 ## Common Commands
 

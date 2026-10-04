@@ -2,11 +2,10 @@ package com.example.rabbitmq;
 
 import com.example.rabbitmq.dto.*;
 import com.example.rabbitmq.producer.*;
-import com.example.rabbitmq.dto.*;
-import com.example.rabbitmq.producer.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -16,6 +15,7 @@ import java.util.UUID;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnBooleanProperty(name = "demo.runner.enabled", matchIfMissing = true)
 public class DemoRunner implements CommandLineRunner {
 
     private final RpcProducer rpcProducer;

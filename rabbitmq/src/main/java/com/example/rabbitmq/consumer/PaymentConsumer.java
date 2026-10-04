@@ -20,7 +20,7 @@ public class PaymentConsumer {
 
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("10000");
 
-    @RabbitListener(queues = RabbitMQConfig.PAYMENT_QUEUE, ackMode = "MANUAL")
+    @RabbitListener(id = "payment", queues = RabbitMQConfig.PAYMENT_QUEUE, ackMode = "MANUAL")
     public void processPayment(Payment payment, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
         log.info("[PAYMENT] Processing payment: {}", payment);
 
@@ -54,7 +54,7 @@ public class PaymentConsumer {
         log.info("[PAYMENT] Calling payment gateway for customer {}", payment.getCustomerId());
     }
 
-    @RabbitListener(queues = RabbitMQConfig.PAYMENT_DLQ)
+    @RabbitListener(id = "failedPayment", queues = RabbitMQConfig.PAYMENT_DLQ)
     public void handleFailedPayment(Payment payment) {
         log.warn("[DLQ] Handling failed payment: {}", payment);
         // Actions for unrecoverable failures:

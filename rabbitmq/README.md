@@ -15,8 +15,9 @@ Spring Boot application demonstrating common RabbitMQ messaging patterns.
 
 ## Prerequisites
 
-- Java 21+
+- Java 25
 - RabbitMQ server running on `localhost:5672`
+- Docker (for tests - Testcontainers starts RabbitMQ)
 
 ## Quick Start
 
@@ -38,6 +39,8 @@ Environment variables (with defaults):
 | `RABBITMQ_PORT` | 5672      | RabbitMQ port |
 | `RABBITMQ_USER` | guest     | Username      |
 | `RABBITMQ_PASS` | guest     | Password      |
+
+Set `demo.runner.enabled=false` to start the app without running the pattern demos.
 
 ## Pattern Details
 

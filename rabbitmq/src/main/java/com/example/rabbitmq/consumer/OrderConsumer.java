@@ -10,13 +10,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class OrderConsumer {
 
-    @RabbitListener(queues = RabbitMQConfig.ORDER_HIGH_PRIORITY_QUEUE)
+    @RabbitListener(id = "highPriorityOrder", queues = RabbitMQConfig.ORDER_HIGH_PRIORITY_QUEUE)
     public void handleHighPriorityOrder(Order order) {
         log.info("[HIGH PRIORITY] Processing urgent order: {}", order);
         processOrder(order, "HIGH");
     }
 
-    @RabbitListener(queues = RabbitMQConfig.ORDER_NORMAL_QUEUE)
+    @RabbitListener(id = "normalOrder", queues = RabbitMQConfig.ORDER_NORMAL_QUEUE)
     public void handleNormalOrder(Order order) {
         log.info("[NORMAL] Processing standard order: {}", order);
         processOrder(order, "NORMAL");

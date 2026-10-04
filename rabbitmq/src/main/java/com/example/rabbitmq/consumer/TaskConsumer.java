@@ -15,7 +15,7 @@ import java.io.IOException;
 @Component
 public class TaskConsumer {
 
-    @RabbitListener(queues = RabbitMQConfig.TASK_QUEUE, ackMode = "MANUAL")
+    @RabbitListener(id = "task", queues = RabbitMQConfig.TASK_QUEUE, ackMode = "MANUAL")
     public void processTask(Task task, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) throws IOException {
         log.info("[WORKER] Received task: {}", task);
         try {
