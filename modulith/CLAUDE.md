@@ -119,16 +119,18 @@ PENDING → CONFIRMED → COMPLETED
 
 - MySQL 8.4 with Flyway migrations
 - Tables: `customers`, `orders`, `products`, `event_publication`
-- Event publication table tracks async event completion (JDBC persistence enabled)
-- Flyway migrations: V1 (schema), V2 (add sku/quantity to orders), V3 (seed products)
+- Event publication table tracks async event lifecycle (JPA persistence via `spring-modulith-starter-jpa`; `status`, `completion_attempts`, `last_resubmission_date`)
+- Flyway migrations: V1 (schema), V2 (add sku/quantity to orders), V3 (seed products), V4 (event publication status columns)
+- Hibernate stores UUIDs as `CHAR` (`hibernate.type.preferred_uuid_jdbc_type: CHAR`) to match `event_publication.id CHAR(36)`
 - `shared/BaseEntity`: `@MappedSuperclass` with id, createdAt, updatedAt audit fields
 
 ## Tech Stack
 
-- Java 21+ with Virtual Threads
-- Spring Boot 3.x + Spring Modulith
+- Java 25 with Virtual Threads
+- Spring Boot 4.1 + Spring Modulith 2.1
 - JPA/Hibernate (batch inserts/updates enabled), Flyway, Lombok
 - springdoc-openapi for Swagger
+- spring-modulith-actuator for the `/actuator/modulith` endpoint
 - spring-modulith-observability for distributed tracing
 - spring-modulith-docs for PlantUML generation
 
@@ -142,14 +144,15 @@ PENDING → CONFIRMED → COMPLETED
 - `CustomerModuleTest`: `@ApplicationModuleTest` — bootstraps customer module, asserts `CustomerFacade` not null
 - `OrderModuleTest`: `@ApplicationModuleTest` — `@MockitoBean CustomerFacade`, asserts `OrderFacade` not null
 - `InventoryModuleTest`: `@ApplicationModuleTest` — bootstraps inventory module, asserts `InventoryFacade` not null
-- Tests use H2 in-memory DB with `src/test/resources/schema.sql` (not Flyway)
+- `MySqlSchemaIntegrationTest`: `@SpringBootTest` against Testcontainers MySQL (container as `@ServiceConnection` bean) — runs Flyway, Hibernate `ddl-auto=validate`, registers a customer and waits for the `CustomerRegisteredEvent` publication to reach `COMPLETED`
+- Module tests use H2 in-memory DB with Hibernate `ddl-auto: create` (not Flyway)
 
 ## Configuration
 
 Key settings in `application.yml`:
 - Virtual threads enabled
 - JPA open-in-view disabled; Hibernate batch inserts/updates enabled (batch_size=20)
-- Modulith event JDBC persistence enabled + schema auto-initialization
+- Modulith event publications persisted via JPA in the Flyway-managed `event_publication` table
 - Events republished on restart (resilience)
 - Actuator exposes health, metrics, modulith endpoints; liveness/readiness probes enabled
 - Graceful shutdown with 30s timeout

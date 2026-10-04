@@ -6,21 +6,16 @@ spring:
     password:
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: create
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.H2Dialect
+        type:
+          preferred_uuid_jdbc_type: CHAR
   flyway:
     enabled: false
-  sql:
-    init:
-      mode: always
   modulith:
     events:
       republish-outstanding-events-on-restart: false
-      jdbc:
-        schema-initialization:
-          enabled: true
 
 logging:
   level:

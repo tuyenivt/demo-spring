@@ -116,7 +116,7 @@ public class GlobalExceptionHandler {
             return HttpStatus.NOT_FOUND;
         }
         if (simpleName.equals("OrderStateTransitionException")) {
-            return HttpStatus.UNPROCESSABLE_ENTITY;
+            return HttpStatus.UNPROCESSABLE_CONTENT;
         }
         if (simpleName.equals("DuplicateEmailException")
                 || simpleName.equals("DuplicateSkuException")

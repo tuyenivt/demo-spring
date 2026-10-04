@@ -9,8 +9,9 @@ spring:
       connection-timeout: 30000
 
   jpa:
-    hibernate:
-      format_sql: true
+    properties:
+      hibernate:
+        format_sql: true
     show-sql: true
 
 logging:
