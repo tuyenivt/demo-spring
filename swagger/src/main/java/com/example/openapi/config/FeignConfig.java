@@ -3,6 +3,7 @@ package com.example.openapi.config;
 import com.example.openapi.feign.CorrelationIdInterceptor;
 import com.example.openapi.feign.PetStoreErrorDecoder;
 import feign.Client;
+import feign.DefaultRetryer;
 import feign.Logger;
 import feign.RequestInterceptor;
 import feign.Retryer;
@@ -23,7 +24,7 @@ public class FeignConfig {
 
     @Bean
     public Retryer retryer() {
-        return new Retryer.Default(100, TimeUnit.SECONDS.toMillis(1), 3);
+        return new DefaultRetryer(100, TimeUnit.SECONDS.toMillis(1), 3);
     }
 
     @Bean

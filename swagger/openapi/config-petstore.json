@@ -1,6 +1,6 @@
 {
   "library": "feign",
-  "dateLibrary": "java8-localdatetime",
+  "dateLibrary": "java8",
   "hideGenerationTimestamp": true,
   "useJakartaEe": true,
   "openApiNullable": false,

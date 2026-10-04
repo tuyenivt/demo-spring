@@ -4,11 +4,12 @@ import com.example.openapi.exception.PetNotFoundException;
 import com.example.openapi.exception.UpstreamClientException;
 import com.example.openapi.exception.UpstreamServiceException;
 import feign.Response;
+import feign.codec.DefaultErrorDecoder;
 import feign.codec.ErrorDecoder;
 
 public class PetStoreErrorDecoder implements ErrorDecoder {
 
-    private final ErrorDecoder defaultDecoder = new Default();
+    private final ErrorDecoder defaultDecoder = new DefaultErrorDecoder();
 
     @Override
     public Exception decode(String methodKey, Response response) {

@@ -8,7 +8,7 @@ import feign.Request;
 import feign.Response;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -93,7 +93,8 @@ class PetControllerTest {
     void getPetByIdWithNegativeIdReturns400() throws Exception {
         mockMvc.perform(get("/api/pets/-1"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("petId must be positive"));
     }
 
     @Test
@@ -109,7 +110,8 @@ class PetControllerTest {
     void findPetsByStatusWithInvalidValueReturns400() throws Exception {
         mockMvc.perform(get("/api/pets").queryParam("status", "broken"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("status must be available, pending, or sold"));
     }
 
     @Test

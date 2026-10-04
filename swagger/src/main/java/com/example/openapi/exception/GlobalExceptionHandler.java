@@ -3,12 +3,14 @@ package com.example.openapi.exception;
 import com.example.openapi.dto.ErrorResponse;
 import feign.FeignException;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.context.MessageSourceResolvable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -20,6 +22,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(MethodArgumentNotValidException exception) {
         var message = Optional.ofNullable(exception.getBindingResult().getFieldError())
                 .map(FieldError::getDefaultMessage).orElse("Validation failed");
+        return build(HttpStatus.BAD_REQUEST, message);
+    }
+
+    // Constraint annotations on controller method parameters (@Positive, List<@Pattern String>, ...)
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponse> handleHandlerMethodValidation(HandlerMethodValidationException exception) {
+        var message = exception.getParameterValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream())
+                .map(MessageSourceResolvable::getDefaultMessage)
+                .findFirst()
+                .orElse("Validation failed");
         return build(HttpStatus.BAD_REQUEST, message);
     }
 

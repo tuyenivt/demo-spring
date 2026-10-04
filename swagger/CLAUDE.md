@@ -7,11 +7,11 @@ This is a **Feign-based API client** project that demonstrates consuming externa
 ## Technology Stack
 
 - **Java**: 25
-- **Spring Boot**: 3.5.10
-- **Spring Cloud**: 2025.0.1
-- **OpenFeign**: Spring Cloud Starter + feign-okhttp + feign-jackson
+- **Spring Boot**: 4.1
+- **Spring Cloud**: 2025.1
+- **OpenFeign**: Spring Cloud Starter + feign-okhttp + feign-jackson; all Feign modules on 13.15 via `bomProperty 'feign.version'` on the Spring Cloud BOM
 - **OpenAPI Generator**: `org.openapi.generator` plugin v7.19.0
-- **OpenAPI Docs**: springdoc-openapi-starter-webmvc-ui 2.8.x
+- **OpenAPI Docs**: springdoc-openapi-starter-webmvc-ui 3.1 (`springDocVersion`; brings `swagger-annotations-jakarta`)
 - **HTTP Client**: OkHttp (via Feign)
 - **Build Tool**: Gradle
 
@@ -50,9 +50,9 @@ swagger/
 
 ### Configuration Classes
 
-- `FeignConfig.java`: OkHttpClient bean + `Retryer.Default` (3 attempts, 100ms–1s) + `Logger.Level.FULL` + `CorrelationIdInterceptor` + `PetStoreErrorDecoder`
+- `FeignConfig.java`: OkHttpClient bean + `DefaultRetryer` (3 attempts, 100ms–1s) + `Logger.Level.FULL` + `CorrelationIdInterceptor` + `PetStoreErrorDecoder`
 - `OpenApiConfig.java`: Configures Springdoc `OpenAPI` bean (title, version, local server) + global `bearerAuth` security scheme
-- `PetStoreConfig.java`: `@ConfigurationProperties(prefix = "app.pet-store")` — builds PetApi, StoreApi, UserApi Feign clients with Basic Auth
+- `PetStoreConfig.java`: `@ConfigurationProperties(prefix = "app.pet-store")` — builds PetApi, StoreApi, UserApi Feign clients with Basic Auth; `JacksonEncoder`/`JacksonDecoder` share a Jackson 2 `JsonMapper` with `JavaTimeModule` (generated models use Jackson 2 annotations + `OffsetDateTime`), ISO dates, unknown properties ignored
 
 ### REST Facades
 
@@ -87,8 +87,11 @@ swagger/
 
 ### Exception Handling
 
+Controllers have no class-level `@Validated`: Spring MVC's built-in method validation applies parameter constraints (`@Positive`, `List<@Pattern String>`).
+
 `GlobalExceptionHandler` maps:
-- `MethodArgumentNotValidException` → 400
+- `MethodArgumentNotValidException` → 400 (`@Valid @RequestBody`)
+- `HandlerMethodValidationException` → 400 (parameter constraints; first violation message)
 - `ConstraintViolationException` → 400
 - `PetNotFoundException` → 404
 - `UpstreamClientException` → 400
@@ -127,7 +130,7 @@ app:
 OpenAPI client is generated at build time via `openApiGenerate` task:
 - Input spec: `openapi/petstore.yaml`
 - Config: `openapi/config-petstore.json`
-- Library: `feign`, Jakarta EE, `java8-localdatetime`, no nullable wrappers
+- Library: `feign`, Jakarta EE, `java8` date library (`OffsetDateTime` — Petstore sends offsets like `+0000`), no nullable wrappers
 - Output: `build/openapi/src/main/java/` (added to `sourceSets.main.java`)
 
 ## API Docs (Springdoc)
@@ -138,10 +141,11 @@ When running locally:
 
 ## Tests
 
-- `PetControllerTest` (8 tests, `@WebMvcTest`): happy-path GET/POST, invalid status→400, negative ID→400, 404→404, blank name→400, upstream 502→502
-- `MainApplicationTests`: context-load only
+- `PetControllerTest` (9 tests, `@WebMvcTest`): happy-path GET/POST, invalid status→400 (+ message), negative ID→400 (+ message), 404→404, blank name→400, upstream 502→502
+- `PetStoreClientTest` (3 tests, `@SpringBootTest(webEnvironment = NONE)`): real Feign clients against a JDK `HttpServer` — Basic Auth + `X-Correlation-ID` headers, `OffsetDateTime` decoding of `+0000` offsets, 404/400/500 → `PetNotFoundException`/`UpstreamClientException`/`UpstreamServiceException`
+- `MainApplicationTests`: context load + `app.pet-store` credential binding
 
-Missing tests: `StoreControllerTest` (GET/POST/DELETE order happy path + 404 + negative ID), upstream 4xx→400 via `UpstreamClientException`, blank `name` on `CreatePetRequest`
+Missing tests: `StoreControllerTest` (GET/POST/DELETE order happy path + 404 + negative ID), controller-level upstream 4xx→400 via `UpstreamClientException`
 
 ## Notes
 

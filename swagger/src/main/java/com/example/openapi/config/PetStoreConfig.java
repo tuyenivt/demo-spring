@@ -3,6 +3,11 @@ package com.example.openapi.config;
 import com.example.openapi.petstore.api.PetApi;
 import com.example.openapi.petstore.api.StoreApi;
 import com.example.openapi.petstore.api.UserApi;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import feign.Client;
 import feign.Feign;
 import feign.Logger.Level;
@@ -39,11 +44,18 @@ public class PetStoreConfig {
     private final RequestInterceptor correlationIdInterceptor;
     private final ErrorDecoder petStoreErrorDecoder;
 
+    // The generated client models use Jackson 2 annotations and java.time (OffsetDateTime) fields
+    private static final ObjectMapper PET_STORE_MAPPER = JsonMapper.builder()
+            .addModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .build();
+
     private <T> T buildClient(Class<T> apiType) {
         return Feign.builder()
                 .client(client)
-                .encoder(new JacksonEncoder())
-                .decoder(new JacksonDecoder())
+                .encoder(new JacksonEncoder(PET_STORE_MAPPER))
+                .decoder(new JacksonDecoder(PET_STORE_MAPPER))
                 .logger(new Slf4jLogger(apiType))
                 .logLevel(feignLoggerLevel)
                 .retryer(retryer)
