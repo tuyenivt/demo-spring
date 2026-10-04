@@ -4,12 +4,12 @@ Spring Boot MVC application demonstrating Spring Security with role-based access
 
 ## Tech Stack
 
-- Java 21+ / Spring Boot 4
+- Java 25 / Spring Boot 4.1 / Spring Security 7.1
 - Spring Security (form-based auth, method-level security)
-- Thymeleaf + `thymeleaf-extras-springsecurity6` (`sec:authorize` dialect)
-- H2 Database (embedded, unused — JPA dep present but no entities)
+- Thymeleaf + `thymeleaf-extras-springsecurity6` (`sec:authorize` dialect; the artifact managed by Boot 4.1)
+- H2 Database (embedded, unused — JPA + `spring-boot-h2console` deps present but no entities, console not enabled)
 - Lombok
-- JUnit 5 + Spring Security Test (`spring-security-test`)
+- JUnit 5 + `spring-boot-starter-security-test` / `-webmvc-test` / `-thymeleaf-test` / `-data-jpa-test`
 
 ## Project Structure
 
@@ -21,7 +21,7 @@ security/
 │   │   └── SecurityConfig.java       # Security configuration
 │   └── controller/
 │       ├── HomeController.java       # GET / (EMPLOYEE)
-│       ├── LoginController.java      # Login/access-denied pages
+│       ├── LoginController.java      # GET /my-login/ (login page), GET /access-denied
 │       ├── LeadersController.java    # GET /leaders/ (MANAGER)
 │       └── SystemsController.java    # GET /systems/ (ADMIN)
 ├── src/main/resources/
@@ -86,9 +86,13 @@ security/
 
 ## Tests
 
-### SecurityTests.java (10 tests, `@WebMvcTest` + `@Import(SecurityConfig.class)`)
+### SecurityTests.java (15 tests, `@WebMvcTest` + `@Import(SecurityConfig.class)`)
 - `homeRequiresAuthentication` — unauthenticated redirect to `/my-login/`
-- `loginPageRedirectsToLoginPageWithTrailingSlash` — duplicate of above (redirect check)
+- `loginPageIsAccessibleWithoutAuthentication` — `/my-login/` → 200, `login/index` view
+- `validCredentialsAuthenticateWithUserRoles` — form login as peter → redirect `/`, authenticated with EMPLOYEE + MANAGER
+- `invalidCredentialsRedirectToLoginWithError` — wrong password → `/my-login/?error`
+- `rememberMeSetsCookieWhenRequested` — `remember-me=on` → `remember-me` cookie, max-age 86400
+- `logoutRedirectsToLoginPage` — POST `/logout` → `/my-login/?logout`
 - `employeeCanAccessHome` — EMPLOYEE → `/` → 200
 - `employeeCannotAccessLeaders` — EMPLOYEE → `/leaders/` → 403
 - `employeeCannotAccessSystems` — EMPLOYEE → `/systems/` → 403
@@ -102,8 +106,8 @@ security/
 ### EncryptionTests.java (4 tests, no Spring context)
 - `testBCrypt` — `BCrypt.hashpw` + `BCrypt.checkpw`
 - `testBCryptPasswordEncoder` — `BCryptPasswordEncoder.encode` + `matches`
-- `testKeyGenerator` — `KeyGenerators.string().generateKey()`
-- `testEncryptor` — `Encryptors.delux` (AES-CBC) encrypt + decrypt roundtrip
+- `testKeyGenerator` — `KeyGenerators.string().generateKey()` (16 hex chars, usable as a salt)
+- `testEncryptor` — `AesGcmBytesEncryptor.withPassword(password, hexSalt)` (AES-GCM, PBKDF2 key) + `Hex` encode/decode roundtrip; random IV → different ciphertext per call
 
 ## Key Files
 

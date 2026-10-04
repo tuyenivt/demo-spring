@@ -4,10 +4,13 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.encrypt.Encryptors;
-import org.springframework.security.crypto.encrypt.TextEncryptor;
+import org.springframework.security.crypto.codec.Hex;
+import org.springframework.security.crypto.encrypt.AesGcmBytesEncryptor;
+import org.springframework.security.crypto.encrypt.BytesEncryptor;
 import org.springframework.security.crypto.keygen.KeyGenerators;
 import org.springframework.security.crypto.keygen.StringKeyGenerator;
+
+import java.nio.charset.StandardCharsets;
 
 public class EncryptionTests {
 
@@ -28,16 +31,22 @@ public class EncryptionTests {
     @Test
     public void testKeyGenerator() {
         StringKeyGenerator generator = KeyGenerators.string();
-        System.out.println(generator.generateKey());
+        String key = generator.generateKey();
+        System.out.println(key);
+        // 8 random bytes, hex-encoded - usable as the salt for password-based encryptors
+        Assertions.assertTrue(key.matches("[0-9a-f]{16}"));
     }
 
     @Test
     public void testEncryptor() {
-        TextEncryptor encryptor = Encryptors.delux("password", "f25e5ba1a7d42dc1");
+        // AES-256/GCM with a PBKDF2-derived key; the salt is hex-encoded
+        BytesEncryptor encryptor = AesGcmBytesEncryptor.withPassword("password", "f25e5ba1a7d42dc1").build();
         String plainText = "hello world";
-        String encryptedText = encryptor.encrypt(plainText);
+        String encryptedText = new String(Hex.encode(encryptor.encrypt(plainText.getBytes(StandardCharsets.UTF_8))));
         System.out.println(encryptedText);
-        Assertions.assertEquals(plainText, encryptor.decrypt(encryptedText));
+        Assertions.assertEquals(plainText, new String(encryptor.decrypt(Hex.decode(encryptedText)), StandardCharsets.UTF_8));
+        // A random IV per call: the same plaintext never produces the same ciphertext
+        Assertions.assertNotEquals(encryptedText, new String(Hex.encode(encryptor.encrypt(plainText.getBytes(StandardCharsets.UTF_8)))));
     }
 
 }
