@@ -16,9 +16,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 
 @Aspect
 @Component
@@ -58,14 +58,15 @@ public class IdempotentAspect {
         // Use annotation attributes or fall back to global config
         var timeout = preventRepeatedRequests.timeout() >= 0 ? preventRepeatedRequests.timeout() : config.getTimeoutMinutes();
         var timeUnit = preventRepeatedRequests.timeUnit();
+        var lockTtl = Duration.of(timeout, timeUnit.toChronoUnit());
 
         if (isReplay) {
             // Force replay: delete existing key and set new lock
             redisTemplate.delete(cacheName);
-            redisTemplate.opsForValue().set(cacheName, FIRST_REQUEST, timeout, timeUnit);
+            redisTemplate.opsForValue().set(cacheName, FIRST_REQUEST, lockTtl);
         } else {
             // Atomic check-and-set: only one request wins
-            var acquired = redisTemplate.opsForValue().setIfAbsent(cacheName, FIRST_REQUEST, timeout, timeUnit);
+            var acquired = redisTemplate.opsForValue().setIfAbsent(cacheName, FIRST_REQUEST, lockTtl);
             if (Boolean.FALSE.equals(acquired)) {
                 throw new IdempotentException("Repeated requests, previous request expired in " + timeout + " " + timeUnit.name().toLowerCase());
             }
@@ -98,6 +99,7 @@ public class IdempotentAspect {
         // Use annotation attributes or fall back to global config
         var timeout = idempotent.timeout() >= 0 ? idempotent.timeout() : config.getTimeoutMinutes();
         var timeUnit = idempotent.timeUnit();
+        var lockTtl = Duration.of(timeout, timeUnit.toChronoUnit());
         var resultExpire = idempotent.resultExpire() >= 0 ? idempotent.resultExpire() : config.getResultExpireMinutes();
 
         if (replay) {
@@ -124,7 +126,7 @@ public class IdempotentAspect {
         }
 
         // Atomic check-and-set: only one request wins the lock
-        var acquired = redisTemplate.opsForValue().setIfAbsent(cacheKey, FIRST_REQUEST, timeout, timeUnit);
+        var acquired = redisTemplate.opsForValue().setIfAbsent(cacheKey, FIRST_REQUEST, lockTtl);
         if (Boolean.FALSE.equals(acquired)) {
             throw new IdempotentException(String.join(" ",
                     "Repeated submissions, previous request expired in",
@@ -140,7 +142,7 @@ public class IdempotentAspect {
             if (result instanceof ResponseEntity<?> re) {
                 toCache = new CachedResponse(re.getStatusCode().value(), re.getBody());
             }
-            redisTemplate.opsForValue().set(cacheKey, toCache, resultExpire, TimeUnit.MINUTES);
+            redisTemplate.opsForValue().set(cacheKey, toCache, Duration.ofMinutes(resultExpire));
             return result;
         } catch (Throwable ex) {
             // Delete key on failure to allow retries

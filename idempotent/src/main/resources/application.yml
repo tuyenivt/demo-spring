@@ -1,16 +1,12 @@
 spring:
   application:
     name: idempotent
-  cache:
-    type: redis
-  redis:
-    database: 0
-    host: localhost
-    port: 6379
-    password:
-    timeout: 60000
-    ssl: false
-    ttl: 86400000
+  data:
+    redis:
+      database: 0
+      host: localhost
+      port: 6379
+      timeout: 60s
 
 app:
   idempotent:

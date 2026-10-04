@@ -35,8 +35,6 @@ AOP-based idempotency library using Redis for duplicate request detection and re
 idempotent/
 ├── src/main/java/com/example/idempotent/
 │   ├── MainApplication.java
-│   ├── config/
-│   │   └── AppConfig.java              # App-level config values
 │   ├── controller/
 │   │   ├── PaymentDemoController.java  # @Idempotent demo (payment, refund, slow)
 │   │   ├── OrderDemoController.java    # @Idempotent demo
@@ -61,7 +59,7 @@ idempotent/
 │       ├── CachedResponse.java         # Wrapper preserving HTTP status code
 │       ├── IdempotentConfig.java       # Idempotent settings
 │       ├── IdempotentException.java    # Duplicate error
-│       └── IdempotentRedisConfig.java  # Redis cache config
+│       └── IdempotentRedisConfig.java  # RedisTemplate with Jackson JSON serializer (restricted default typing)
 ├── src/test/java/com/example/idempotent/
 │   └── IdempotentIntegrationTest.java  # Testcontainers integration tests
 └── src/main/resources/
@@ -105,9 +103,9 @@ app:
 
 ## Dependencies
 
-- Spring Boot AOP
+- Spring Boot AspectJ
 - Spring Data Redis
-- Spring Boot Web
+- Spring Boot Web MVC
 - Spring Boot Validation (Bean Validation)
 - Lombok
 - Testcontainers (testing)
@@ -206,7 +204,7 @@ curl -X POST http://localhost:8080/api/demo/payments \
 
 ## Tests
 
-Integration tests (`IdempotentIntegrationTest`, Testcontainers Redis, 9 tests):
+Integration tests (`IdempotentIntegrationTest`, `RestTestClient` + Testcontainers Redis via `@ServiceConnection`, 9 tests):
 
 | Test                                                         | Description                                     |
 |--------------------------------------------------------------|-------------------------------------------------|
