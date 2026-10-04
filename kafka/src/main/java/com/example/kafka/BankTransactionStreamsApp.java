@@ -2,7 +2,6 @@ package com.example.kafka;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.OffsetResetStrategy;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.utils.Bytes;
@@ -15,8 +14,7 @@ import org.apache.kafka.streams.kstream.Grouped;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Produced;
 import org.apache.kafka.streams.state.KeyValueStore;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
-import org.springframework.kafka.support.serializer.JsonSerializer;
+import org.springframework.kafka.support.serializer.JacksonJsonSerde;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
@@ -42,13 +40,14 @@ public class BankTransactionStreamsApp {
         var properties = new Properties();
         properties.setProperty(StreamsConfig.APPLICATION_ID_CONFIG, APPLICATION_ID);
         properties.setProperty(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, this.bootstrapServer);
-        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, OffsetResetStrategy.EARLIEST.name().toLowerCase());
+        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         properties.setProperty(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
         return properties;
     }
 
     public Topology createTopology(String fromTopic, String toTopic) {
-        Serde<JsonNode> jsonSerde = Serdes.serdeFrom(new JsonSerializer(), new JsonDeserializer());
+        // Plain JSON on the wire (no type headers), matching what BankTransactionProducer sends
+        Serde<JsonNode> jsonSerde = new JacksonJsonSerde<>(JsonNode.class).noTypeInfo().ignoreTypeHeaders();
 
         var builder = new StreamsBuilder();
         var bankTransactionInput = builder.stream(fromTopic, Consumed.with(Serdes.String(), jsonSerde));
@@ -76,8 +75,8 @@ public class BankTransactionStreamsApp {
         newBalance.put("count", balance.get("count").asInt() + 1);
         newBalance.put("balance", balance.get("balance").asInt() + transaction.get("amount").asInt());
 
-        var balanceEpoch = Instant.parse(balance.get("time").asText()).toEpochMilli();
-        var transactionEpoch = Instant.parse(transaction.get("time").asText()).toEpochMilli();
+        var balanceEpoch = Instant.parse(balance.get("time").asString()).toEpochMilli();
+        var transactionEpoch = Instant.parse(transaction.get("time").asString()).toEpochMilli();
         var newBalanceInstant = Instant.ofEpochMilli(Math.max(balanceEpoch, transactionEpoch));
         newBalance.put("time", newBalanceInstant.toString());
         return newBalance;

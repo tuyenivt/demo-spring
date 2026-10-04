@@ -23,16 +23,16 @@ kafka/
         ├── ProducerAppTests.java
         ├── ConsumerAppTests.java
         ├── StreamsAppTests.java
-        ├── WordCountStreamsAppTests.java
+        ├── WordCountStreamsAppTests.java      # TopologyTestDriver, no broker needed
+        ├── BankTransactionStreamsAppTests.java # TopologyTestDriver, no broker needed
         └── FavouriteColourStreamsAppRunner.java
 ```
 
 ## Dependencies
 
-- `org.springframework.boot:spring-boot-starter`
+- `org.springframework.boot:spring-boot-starter-kafka` - Kafka clients + Spring Kafka (used for `JacksonJsonSerde` only)
 - `org.apache.kafka:kafka-streams` - Native Kafka Streams API
-- `org.springframework.kafka:spring-kafka` - For JSON Serde only
-- `tools.jackson.core:jackson-databind:3.0.4` - JSON processing
+- `tools.jackson.core:jackson-databind` - JSON processing (Jackson 3)
 - `org.projectlombok:lombok`
 
 ## Key Components
@@ -77,6 +77,7 @@ Native Kafka consumer with various consumption patterns:
 - **Input**: `streams-bank-transaction-input` (JSON: `{name, amount, time}`)
 - **Output**: `streams-bank-transaction-output` (JSON: `{count, balance, time}`)
 - **Features**: `EXACTLY_ONCE_V2` processing guarantee, stateful aggregation with KeyValueStore
+- **Serde**: `JacksonJsonSerde<JsonNode>` with `noTypeInfo()` + `ignoreTypeHeaders()` - plain JSON on the wire, no `__TypeId__` headers
 
 ## Topics Reference
 
