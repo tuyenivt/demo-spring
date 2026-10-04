@@ -1,41 +1,41 @@
 -- Sample students
-INSERT INTO student (id, name, address, date_of_birth, created_at, updated_at)
+INSERT INTO student (id, name, address, date_of_birth, created_at, updated_at, version)
 VALUES ('a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d', 'Alice Johnson', '123 Elm Street, Springfield', '1998-03-15',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0),
        ('b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e', 'Bob Smith', '456 Maple Avenue, Riverside', '1999-07-22',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0),
        ('c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f', 'Charlie Brown', '789 Oak Drive, Hilltop', '2000-11-08',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0),
        ('d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a', 'Diana Prince', '321 Pine Street, Lakeside', '1997-04-10',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0),
        ('e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b', 'Ethan Hunt', '654 Cedar Lane, Mountainview', '2001-09-25',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0),
        ('f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c', 'Fiona Green', '987 Birch Road, Valley Town', '1996-12-03',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0),
        ('a7b8c9d0-e1f2-4a3b-4c5d-6e7f8a9b0c1d', 'George Wilson', '147 Willow Court, Seaside', '2002-06-18',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0),
        ('b8c9d0e1-f2a3-4b4c-5d6e-7f8a9b0c1d2e', 'Hannah Lee', '258 Spruce Avenue, Parkview', '1995-01-30',
-        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0);
 
 -- Sample vehicles
-INSERT INTO vehicle (id, type, student_id, created_at, updated_at)
+INSERT INTO vehicle (id, type, student_id, created_at, updated_at, version)
 VALUES ('11111111-1111-1111-1111-111111111111', 'CAR', 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('22222222-2222-2222-2222-222222222222', 'BICYCLE', 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('33333333-3333-3333-3333-333333333333', 'MOTORCYCLE', 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('44444444-4444-4444-4444-444444444444', 'TRUCK', 'c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('55555555-5555-5555-5555-555555555555', 'VAN', 'd4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('66666666-6666-6666-6666-666666666666', 'CAR', 'd4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('77777777-7777-7777-7777-777777777777', 'SCOOTER', 'f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('88888888-8888-8888-8888-888888888888', 'BICYCLE', 'a7b8c9d0-e1f2-4a3b-4c5d-6e7f8a9b0c1d', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('99999999-9999-9999-9999-999999999999', 'BUS', 'b8c9d0e1-f2a3-4b4c-5d6e-7f8a9b0c1d2e', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP),
+        CURRENT_TIMESTAMP, 0),
        ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'CAR', 'e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b', CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP);
+        CURRENT_TIMESTAMP, 0);

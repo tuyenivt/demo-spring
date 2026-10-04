@@ -45,7 +45,7 @@ src/main/resources/graphql/
 
 ## Key Technologies
 
-- **Spring Boot 3.x** with Spring GraphQL
+- **Spring Boot 4.1** with Spring for GraphQL
 - **H2 Database** (embedded, in-memory)
 - **JPA/Hibernate** with Specification pattern
 - **graphql-java-extended-scalars** for UUID, DateTime
@@ -208,11 +208,12 @@ spring.threads.virtual.enabled: true
 ../gradlew test
 ```
 
-4 test classes — all use `@MockitoBean` (Spring Boot 3.4+):
-- `StudentControllerTest` (6 tests) — `@GraphQlTest` + `GraphQlTester`; imports `GraphQLConfig`, mocks `StudentService` + `VehicleRepository`
-- `VehicleControllerTest` (5 tests) — `@GraphQlTest` + `GraphQlTester`; imports `GraphQLConfig`, mocks `VehicleService` + `StudentRepository`
-- `StudentServiceTest` (8 tests) — `@ExtendWith(MockitoExtension.class)`; unit tests for create/findById/update/findPage/findConnection/createAll/findAll
-- `VehicleServiceTest` (9 tests) — `@ExtendWith(MockitoExtension.class)`; unit tests for create (with/without student)/update/findPage/findConnection/createAll/findAll
+5 test classes; mocks use `@MockitoBean`:
+- `DemoGraphqlApplicationTests` (1 test) — `@SpringBootTest` context load; seeds H2 from `src/test/resources/data.sql` (`version` column seeded as `0`)
+- `StudentControllerTest` (7 tests) — `@GraphQlTest` + `GraphQlTester`; imports `GraphQLConfig`, mocks `StudentService` + `VehicleRepository`
+- `VehicleControllerTest` (6 tests) — `@GraphQlTest` + `GraphQlTester`; imports `GraphQLConfig`, mocks `VehicleService` + `StudentRepository`
+- `StudentServiceTest` (10 tests) — `@ExtendWith(MockitoExtension.class)`; unit tests for create/findById/update/findPage/findConnection/createAll/findAll
+- `VehicleServiceTest` (11 tests) — `@ExtendWith(MockitoExtension.class)`; unit tests for create (with/without student)/update/findPage/findConnection/createAll/findAll
 
 ## Missing Demos
 

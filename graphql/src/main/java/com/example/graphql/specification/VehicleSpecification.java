@@ -23,7 +23,7 @@ public final class VehicleSpecification {
 
     public static Specification<Vehicle> fromFilter(VehicleFilter filter) {
         if (filter == null) {
-            return Specification.where(null);
+            return Specification.unrestricted();
         }
 
         return (root, query, cb) -> {

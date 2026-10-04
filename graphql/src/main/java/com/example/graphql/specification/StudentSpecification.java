@@ -20,7 +20,7 @@ public final class StudentSpecification {
 
     public static Specification<Student> fromFilter(StudentFilter filter) {
         if (filter == null) {
-            return Specification.where(null);
+            return Specification.unrestricted();
         }
 
         return (root, query, cb) -> {
