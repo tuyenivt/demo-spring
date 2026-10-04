@@ -3,17 +3,16 @@ package com.example.ai.controller;
 import com.example.ai.dto.AnswerResponse;
 import com.example.ai.dto.QuestionRequest;
 import com.example.ai.service.OllamaService;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
-@Validated
 @RestController
 @RequestMapping("/question")
 @RequiredArgsConstructor
@@ -37,12 +36,12 @@ public class OllamaController {
     }
 
     @SuppressWarnings("unused") // Parameters required by Resilience4j fallback signature
-    public AnswerResponse rateLimitFallback(String userId, QuestionRequest request, Exception e) {
+    public AnswerResponse rateLimitFallback(String userId, QuestionRequest request, RequestNotPermitted e) {
         return new AnswerResponse("Too many requests. Please try again later.", userId);
     }
 
     @SuppressWarnings("unused") // Parameters required by Resilience4j fallback signature
-    public Flux<String> streamRateLimitFallback(String userId, String question, Exception e) {
+    public Flux<String> streamRateLimitFallback(String userId, String question, RequestNotPermitted e) {
         return Flux.just("Too many requests. Please try again later.");
     }
 }

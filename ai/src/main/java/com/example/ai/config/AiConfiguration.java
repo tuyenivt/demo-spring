@@ -1,7 +1,7 @@
 package com.example.ai.config;
 
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.PromptChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.vectorstore.VectorStore;
@@ -21,7 +21,7 @@ public class AiConfiguration {
         return builder
                 .defaultAdvisors(
                         QuestionAnswerAdvisor.builder(vectorStore).build(),
-                        PromptChatMemoryAdvisor.builder(chatMemory).build())
+                        MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .defaultSystem(systemPromptResource)
                 .build();
     }

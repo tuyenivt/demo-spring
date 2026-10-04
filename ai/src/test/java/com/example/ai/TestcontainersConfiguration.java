@@ -13,13 +13,13 @@ import java.time.Duration;
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
 
-    private static final String CHAT_MODEL = "llama3.1:1b";
+    private static final String CHAT_MODEL = "llama3.2:1b";
     private static final String EMBEDDING_MODEL = "mxbai-embed-large";
 
     private static final OllamaContainer OLLAMA;
 
     static {
-        OLLAMA = new OllamaContainer(DockerImageName.parse("ollama/ollama:0.15.2"))
+        OLLAMA = new OllamaContainer(DockerImageName.parse("ollama/ollama:0.35.1"))
                 .withStartupTimeout(Duration.ofMinutes(5));
         OLLAMA.start();
 
@@ -40,6 +40,6 @@ class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
     QdrantContainer qdrantContainer() {
-        return new QdrantContainer(DockerImageName.parse("qdrant/qdrant:v1.16"));
+        return new QdrantContainer(DockerImageName.parse("qdrant/qdrant:v1.19"));
     }
 }

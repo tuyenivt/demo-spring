@@ -4,7 +4,7 @@
 Spring AI-powered customer support chatbot for HealthConnect telehealth platform. Uses Ollama (LLaMA 3.1) with RAG pattern and Qdrant vector store.
 
 ## Tech Stack
-- Spring Boot + Spring AI 1.1.2
+- Spring Boot 4.1 + Spring AI 2.0
 - Ollama (LLaMA 3.1 model)
 - Qdrant vector database
 - Resilience4j (rate limiting)
@@ -68,8 +68,8 @@ ai/
 ### OllamaController
 - `POST /question/{userId}` - accepts question JSON, returns AI response
 - `GET /question/{userId}/stream` - SSE streaming response (`text/event-stream`)
-- Rate limiting via Resilience4j (`questionApi`) with fallback responses (returns 200 with message)
-- `@Validated`: `@Size(min=1, max=100)` on `userId`; `@NotBlank @Size(max=2000)` on stream `question` param
+- Rate limiting via Resilience4j (`questionApi`) with fallback responses (returns 200 with message); fallbacks only accept `RequestNotPermitted` so other failures still map to 503/500
+- Method validation: `@Size(min=1, max=100)` on `userId`; `@NotBlank @Size(max=2000)` on stream `question` param → `HandlerMethodValidationException` → 400
 
 ### ConversationController
 - `GET /conversations/{userId}` - get conversation history; `limit` param: `@Min(1) @Max(100)`, default 50
@@ -97,7 +97,7 @@ spring.ai.ollama:
     pull-model-strategy: always
     timeout: 60s
     max-retries: 1
-  chat.options:
+  chat:
     model: ${OLLAMA_MODEL:llama3.1}
     temperature: 0.7
 
@@ -120,10 +120,10 @@ management.endpoints.web.exposure.include: health,metrics,prometheus
 ### Prerequisites
 ```bash
 # Ollama
-docker run -d --name ai-ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama:0.15.2
+docker run -d --name ai-ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama:0.35.1
 
 # Qdrant
-docker run -d --name ai-qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant:v1.16
+docker run -d --name ai-qdrant -p 6333:6333 -p 6334:6334 qdrant/qdrant:v1.19
 ```
 
 ### Test API
@@ -157,7 +157,7 @@ curl http://localhost:8080/actuator/health
 
 ## Spring AI Patterns Used
 1. **ChatClient Builder** - fluent API for AI conversations, configured as a Spring bean
-2. **Advisors** - `QuestionAnswerAdvisor` (RAG, from `spring-ai-advisors-vector-store`) + `PromptChatMemoryAdvisor` (memory)
+2. **Advisors** - `QuestionAnswerAdvisor` (RAG, from `spring-ai-vector-store-advisor`) + `MessageChatMemoryAdvisor` (memory)
 3. **VectorStore** - semantic document search with Qdrant
 4. **ChatMemory** - per-user conversation tracking via `ChatMemory.CONVERSATION_ID` advisor param
 5. **Streaming** - `Flux<String>` SSE via `.stream().content()`
