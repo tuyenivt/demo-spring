@@ -4,6 +4,7 @@ spring:
   flyway:
     enabled: true
   jpa:
+    open-in-view: false
     show-sql: true
     hibernate:
       ddl-auto: validate
@@ -15,6 +16,11 @@ spring:
         order_updates: true
         jdbc:
           batch_size: 100
+
+management:
+  endpoint:
+    health:
+      show-details: always
 
 scheduled:
   fixedRate: 10000

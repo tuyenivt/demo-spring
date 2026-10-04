@@ -1,8 +1,9 @@
 # Database Migration Subproject
 
 ## Tech Stack
-- Spring Boot 3.5.10
+- Spring Boot 4.1
 - Java 25
+- Spring Web MVC + Actuator (health endpoint)
 - Spring Data JPA (dual datasource)
 - MapStruct (entity mapping)
 - MySQL 8.0
@@ -53,6 +54,7 @@ Each has isolated:
 | `MigrationHealthIndicator.java:20` | Actuator health check for migration status         |
 | `FlywayConfig.java:12`             | Dual Flyway configuration for both databases       |
 | `ShedLockConfig.java:14`           | Distributed lock provider configuration            |
+| `SchedulingConfig.java:9`          | Enables scheduling unless `scheduled.enabled=false` |
 
 ## Configuration
 
@@ -63,7 +65,10 @@ spring:
     hibernate.ddl-auto: validate  # Fail fast on schema mismatch
 migration:
   timezone-offset-hours: -7  # Configurable timezone adjustment
+management:
+  endpoint.health.show-details: always  # Expose migration details
 scheduled:
+  enabled: true     # Set false to turn off the scheduled migration
   fixedRate: 10000  # Migration runs every 10 seconds
 ```
 
@@ -132,12 +137,12 @@ Migration logs at INFO level:
 - Default values (vendor, inStock)
 
 ### Integration Tests
-`MainApplicationTests.java` - Context load test with Testcontainers:
+`MainApplicationTests.java` - End-to-end test with Testcontainers:
 - Two MySQL containers (source and target, both `mysql:8.4`)
 - Verifies Spring context loads with dual datasource configuration
 - Flyway auto-creates all tables (`product`, `migration_state`, `shedlock`, `old_product`)
-- Scheduling disabled via `spring.task.scheduling.enabled=false`
-- Does NOT seed, trigger, or verify migration data (context-load only)
+- Scheduling disabled via `scheduled.enabled=false`; the test calls `ProductTasks.migrate()` directly
+- Seeds `old_product`, runs the migration, verifies mapped `product` rows, `migration_state` checkpoint and `/actuator/health` details
 
 Run tests:
 ```bash

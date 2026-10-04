@@ -63,6 +63,7 @@ export OLD_DEMO_DB_PASSWORD=legacy_password
 ### application.yml
 ```yaml
 scheduled:
+  enabled: true     # Set false to turn off the scheduled migration
   fixedRate: 10000  # Migration frequency (milliseconds)
 
 migration:
@@ -114,11 +115,11 @@ Tests MapStruct transformation logic:
 ./gradlew :database-migration:test --tests MainApplicationTests
 ```
 
-Spring context test with Testcontainers:
+End-to-end test with Testcontainers:
 - Spins up two MySQL containers (source and target)
 - Verifies application context loads successfully
 - Flyway automatically creates all tables in both databases
-- Validates dual datasource configuration
+- Seeds `old_product`, runs the migration and verifies `product`, `migration_state` and `/actuator/health`
 
 ## Production Checklist
 
@@ -204,6 +205,7 @@ database-migration/
 │   ├── config/
 │   │   ├── AppConfig.java                                # Batch size & timezone config
 │   │   ├── FlywayConfig.java                             # Dual Flyway setup
+│   │   ├── SchedulingConfig.java                         # Toggle via scheduled.enabled
 │   │   └── ShedLockConfig.java                           # Distributed lock
 │   ├── demo/                                             # Target database
 │   │   ├── config/DemoDataSourceConfiguration.java
@@ -240,8 +242,9 @@ database-migration/
 
 - Spring Boot Starter Data JPA
 - Spring Boot Starter Actuator
+- Spring Boot Starter Web MVC (serves `/actuator/health`)
+- Spring Boot Starter Flyway + Flyway MySQL
 - MapStruct (entity mapping)
-- Flyway Core + Flyway MySQL
 - ShedLock Spring + ShedLock JDBC Template
 - MySQL Connector/J
 - Lombok
