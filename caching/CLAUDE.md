@@ -6,14 +6,14 @@ Spring Boot caching demo using Redis as the cache backend. Demonstrates Spring C
 
 ## Tech Stack
 
-- Java 21+
-- Spring Boot 3.5.10
-- Spring Web
+- Java 25
+- Spring Boot 4.1
+- Spring Web MVC
 - Spring Data JPA (MySQL)
 - Spring Data Redis
 - Spring Validation
 - Spring Actuator
-- SpringDoc OpenAPI 2.8.15
+- SpringDoc OpenAPI 3.1
 - Liquibase
 - Lombok
 
@@ -79,6 +79,7 @@ caching/
 - Consistent cache keys (`#result.productId` for both read and write operations)
 - Comprehensive cache eviction on updates (both `product` and `product_list` caches)
 - `delete()` uses `beforeInvocation = true` to evict before DB delete
+- `RedisCacheWriter` is configured with `immediateWrites()` so cache puts are synchronous (read-your-writes)
 - DTO pattern decouples API contract from database schema
 - Input validation with Jakarta Bean Validation
 
@@ -167,26 +168,31 @@ management:
 ### Dependencies (build.gradle)
 
 ```gradle
-implementation 'org.springframework.boot:spring-boot-starter-web'
+implementation 'org.springframework.boot:spring-boot-starter-actuator'
 implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-implementation 'org.springframework.boot:spring-boot-starter-actuator'
+implementation 'org.springframework.boot:spring-boot-starter-liquibase'
 implementation 'org.springframework.boot:spring-boot-starter-validation'
-implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.15'
+implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springDocVersion}"
 implementation 'org.apache.commons:commons-pool2'
-implementation 'org.liquibase:liquibase-core'
 runtimeOnly 'com.mysql:mysql-connector-j'
-testImplementation 'org.springframework.boot:spring-boot-starter-test'
-testImplementation 'org.testcontainers:junit-jupiter'
-testImplementation 'org.testcontainers:mysql'
-testImplementation 'org.testcontainers:testcontainers'
+testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+testImplementation 'org.springframework.boot:spring-boot-starter-data-redis-test'
+testImplementation 'org.springframework.boot:spring-boot-starter-liquibase-test'
+testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+testImplementation 'org.testcontainers:testcontainers-mysql'
 ```
 
 ## Redis Features Demonstrated
 
 1. **Service-Layer Caching** - Method-level caching at service layer for better design
 2. **TTL Configuration** - Per-cache expiration times (1h for product, 15m for product_list)
-3. **JSON Serialization** - Human-readable cache values
+3. **JSON Serialization** - Human-readable cache values via `GenericJacksonJsonRedisSerializer` with default typing restricted to app/JDK types
 4. **Connection Pooling** - Lettuce pool with commons-pool2
 5. **Cache Statistics** - Via actuator endpoint
 6. **Resilient Cache Warming** - Pre-populate cache on startup with error handling

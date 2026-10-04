@@ -31,4 +31,4 @@ management:
         include: health,caches,metrics
   endpoint:
     caches:
-      enabled: true
+      access: unrestricted

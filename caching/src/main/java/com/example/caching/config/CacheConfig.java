@@ -1,8 +1,5 @@
 package com.example.caching.config;
 
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.annotation.CachingConfigurer;
@@ -12,10 +9,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import tools.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 
 import java.time.Duration;
 import java.util.Map;
@@ -27,14 +26,22 @@ public class CacheConfig implements CachingConfigurer {
 
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        var mapper = JsonMapper.builder().addModule(new JavaTimeModule()).disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS).build();
+        var typeValidator = BasicPolymorphicTypeValidator.builder()
+                .allowIfSubType("com.example.caching.")
+                .allowIfSubType("java.util.")
+                .allowIfSubType("java.time.")
+                .allowIfSubType("java.math.")
+                .build();
+        var valueSerializer = GenericJacksonJsonRedisSerializer.builder()
+                .enableDefaultTyping(typeValidator)
+                .build();
 
         var defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(30))
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
-                        .fromSerializer(new GenericJackson2JsonRedisSerializer(mapper)))
+                        .fromSerializer(valueSerializer))
                 .disableCachingNullValues();
 
         var cacheConfigs = Map.of(
@@ -42,10 +49,14 @@ public class CacheConfig implements CachingConfigurer {
                 "product_list", defaultConfig.entryTtl(Duration.ofMinutes(15))
         );
 
-        return RedisCacheManager.builder(connectionFactory)
+        // Write synchronously so a value put by @Cacheable/@CachePut is visible to the next read
+        var cacheWriter = RedisCacheWriter.create(connectionFactory, writer -> writer
+                .collectStatistics()
+                .immediateWrites());
+
+        return RedisCacheManager.builder(cacheWriter)
                 .cacheDefaults(defaultConfig)
                 .withInitialCacheConfigurations(cacheConfigs)
-                .enableStatistics()
                 .build();
     }
 

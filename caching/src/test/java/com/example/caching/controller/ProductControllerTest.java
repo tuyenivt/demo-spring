@@ -6,13 +6,13 @@ import com.example.caching.entity.Product;
 import com.example.caching.enums.Category;
 import com.example.caching.mapper.ProductMapper;
 import com.example.caching.service.ProductService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
@@ -39,7 +39,7 @@ class ProductControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private JsonMapper objectMapper;
 
     @MockitoBean
     private ProductService productService;
@@ -127,6 +127,15 @@ class ProductControllerTest {
                 .andExpect(jsonPath("$.content[0].productName").value("Test Product"));
 
         verify(productService, times(1)).findByProductName(eq("Test"), any());
+    }
+
+    @Test
+    void searchByName_shouldReturn400_whenNameIsBlank() throws Exception {
+        mockMvc.perform(get("/api/products/search")
+                        .param("name", " "))
+                .andExpect(status().isBadRequest());
+
+        verify(productService, never()).findByProductName(any(), any());
     }
 
     @Test

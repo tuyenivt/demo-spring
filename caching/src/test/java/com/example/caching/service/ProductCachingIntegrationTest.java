@@ -7,14 +7,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.cache.CacheManager;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.mysql.MySQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -27,23 +26,16 @@ import static org.mockito.Mockito.*;
 class ProductCachingIntegrationTest {
 
     @Container
-    static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4")
+    @ServiceConnection
+    static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4")
             .withDatabaseName("demodb")
             .withUsername("root")
             .withPassword("root");
 
     @Container
+    @ServiceConnection(name = "redis")
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8.4-alpine")
             .withExposedPorts(6379);
-
-    @DynamicPropertySource
-    static void configure(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
-        registry.add("spring.datasource.username", MYSQL::getUsername);
-        registry.add("spring.datasource.password", MYSQL::getPassword);
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-    }
 
     @Autowired
     private ProductService productService;
@@ -51,7 +43,7 @@ class ProductCachingIntegrationTest {
     @Autowired
     private CacheManager cacheManager;
 
-    @SpyBean
+    @MockitoSpyBean
     private ProductRepository productRepository;
 
     private Product savedProduct;
@@ -59,9 +51,11 @@ class ProductCachingIntegrationTest {
     @BeforeEach
     void setUp() {
         productRepository.deleteAll();
-        var productCache = cacheManager.getCache("product");
-        if (productCache != null) {
-            productCache.clear();
+        for (var cacheName : cacheManager.getCacheNames()) {
+            var cache = cacheManager.getCache(cacheName);
+            if (cache != null) {
+                cache.invalidate();
+            }
         }
 
         savedProduct = productRepository.save(Product.builder()
@@ -83,7 +77,23 @@ class ProductCachingIntegrationTest {
         var secondCall = productService.findById(savedProduct.getProductId());
 
         assertThat(firstCall).isPresent();
-        assertThat(secondCall).isPresent();
+        assertThat(secondCall).get()
+                .isInstanceOf(Product.class)
+                .extracting(Product::getProductName)
+                .isEqualTo("Cached Product");
         verify(productRepository, times(1)).findById(savedProduct.getProductId());
+    }
+
+    @Test
+    void secondListCallReturnsCachedProducts() {
+        var firstCall = productService.findByProductNameOrderByUpdatedAtDesc("Cached Product");
+        var secondCall = productService.findByProductNameOrderByUpdatedAtDesc("Cached Product");
+
+        assertThat(firstCall).hasSize(1);
+        assertThat(secondCall).singleElement()
+                .isInstanceOf(Product.class)
+                .extracting(Product::getProductId)
+                .isEqualTo(savedProduct.getProductId());
+        verify(productRepository, times(1)).findByProductName(eq("Cached Product"), any());
     }
 }
