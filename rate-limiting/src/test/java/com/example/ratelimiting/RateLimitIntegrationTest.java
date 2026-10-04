@@ -2,12 +2,13 @@ package com.example.ratelimiting;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.test.web.servlet.client.RestTestClient;
 
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -17,118 +18,114 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
 class RateLimitIntegrationTest {
 
     @Autowired
-    TestRestTemplate restTemplate;
+    RestTestClient restTestClient;
 
     @Test
     void shouldAllowRequestsWithinLimit() {
-        var headers = new HttpHeaders();
-        headers.set("X-USER-ID", "test-user-within-limit");
-        var entity = new HttpEntity<>(headers);
-
         for (int i = 0; i < 5; i++) {
-            var response = restTemplate.exchange("/api/orders", HttpMethod.GET, entity, String.class);
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-            assertThat(response.getHeaders().get("X-RateLimit-Limit")).contains("5");
-            assertThat(response.getHeaders().get("X-RateLimit-Remaining")).isNotNull();
+            restTestClient.get().uri("/api/orders")
+                    .header("X-USER-ID", "test-user-within-limit")
+                    .exchange()
+                    .expectStatus().isOk()
+                    .expectHeader().valueEquals("X-RateLimit-Limit", "5")
+                    .expectHeader().exists("X-RateLimit-Remaining");
         }
     }
 
     @Test
     void shouldRejectRequestsExceedingLimit() {
-        var headers = new HttpHeaders();
-        headers.set("X-USER-ID", "rate-limit-user-exceeding");
-        var entity = new HttpEntity<>(headers);
-
         // Exhaust the limit
         for (int i = 0; i < 5; i++) {
-            restTemplate.exchange("/api/orders", HttpMethod.GET, entity, String.class);
+            restTestClient.get().uri("/api/orders")
+                    .header("X-USER-ID", "rate-limit-user-exceeding")
+                    .exchange()
+                    .expectStatus().isOk();
         }
 
         // Next request should be rejected
-        var response = restTemplate.exchange("/api/orders", HttpMethod.GET, entity, String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
-        assertThat(response.getHeaders().get("Retry-After")).isNotNull();
+        restTestClient.get().uri("/api/orders")
+                .header("X-USER-ID", "rate-limit-user-exceeding")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.TOO_MANY_REQUESTS)
+                .expectHeader().exists("Retry-After")
+                .expectBody()
+                .jsonPath("$.status").isEqualTo(429)
+                .jsonPath("$.error").isEqualTo("Too Many Requests");
     }
 
     @Test
     void shouldAllowAnonymousUsersWithIpBasedRateLimit() {
-        var entity = new HttpEntity<>(new HttpHeaders());
-
-        var response = restTemplate.exchange("/api/orders", HttpMethod.GET, entity, String.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getHeaders().get("X-RateLimit-Limit")).contains("5");
+        restTestClient.get().uri("/api/orders")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("X-RateLimit-Limit", "5");
     }
 
     @Test
     void shouldReturnRateLimitHeaders() {
-        var headers = new HttpHeaders();
-        headers.set("X-USER-ID", "header-test-user");
-        var entity = new HttpEntity<>(headers);
-
-        var response = restTemplate.exchange("/api/orders", HttpMethod.GET, entity, String.class);
-
-        assertThat(response.getHeaders().get("X-RateLimit-Limit")).contains("5");
-        assertThat(response.getHeaders().get("X-RateLimit-Remaining")).isNotNull();
-        assertThat(response.getHeaders().get("X-RateLimit-Reset")).isNotNull();
+        restTestClient.get().uri("/api/orders")
+                .header("X-USER-ID", "header-test-user")
+                .exchange()
+                .expectHeader().valueEquals("X-RateLimit-Limit", "5")
+                .expectHeader().exists("X-RateLimit-Remaining")
+                .expectHeader().exists("X-RateLimit-Reset");
     }
 
     @Test
     void shouldAllowNoRateLimitEndpoint() {
-        var entity = new HttpEntity<>(new HttpHeaders());
-
         for (int i = 0; i < 10; i++) {
-            var response = restTemplate.exchange("/api/hello", HttpMethod.GET, entity, String.class);
-            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            restTestClient.get().uri("/api/hello")
+                    .exchange()
+                    .expectStatus().isOk();
         }
     }
 
     @Test
-    void shouldHandleConcurrentRequests() throws Exception {
+    void shouldHandleConcurrentRequests() {
         // Use a unique user per test run to avoid interference from other tests
         var userId = "concurrent-user-" + UUID.randomUUID();
-        var headers = new HttpHeaders();
-        headers.set("X-USER-ID", userId);
-        var entity = new HttpEntity<>(headers);
 
         int totalRequests = 20;
-        var executor = Executors.newFixedThreadPool(totalRequests);
-        List<CompletableFuture<ResponseEntity<String>>> futures = IntStream.range(0, totalRequests)
-                .mapToObj(i -> CompletableFuture.supplyAsync(
-                        () -> restTemplate.exchange("/api/orders", HttpMethod.GET, entity, String.class),
-                        executor))
-                .toList();
+        try (var executor = Executors.newFixedThreadPool(totalRequests)) {
+            var futures = IntStream.range(0, totalRequests)
+                    .mapToObj(i -> CompletableFuture.supplyAsync(() -> restTestClient.get().uri("/api/orders")
+                            .header("X-USER-ID", userId)
+                            .exchange()
+                            .returnResult(String.class)
+                            .getStatus(), executor))
+                    .toList();
 
-        var results = futures.stream().map(CompletableFuture::join).toList();
-        executor.shutdown();
+            var statuses = futures.stream().map(CompletableFuture::join).toList();
 
-        long okCount = results.stream().filter(r -> r.getStatusCode() == HttpStatus.OK).count();
-        long rejectedCount = results.stream().filter(r -> r.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS).count();
-
-        assertThat(okCount).isEqualTo(5);
-        assertThat(rejectedCount).isEqualTo(15);
+            assertThat(statuses).filteredOn(HttpStatusCode::is2xxSuccessful).hasSize(5);
+            assertThat(statuses).filteredOn(s -> s.isSameCodeAs(HttpStatus.TOO_MANY_REQUESTS)).hasSize(15);
+        }
     }
 
     @Test
     void shouldReturnStatusWithoutConsumingToken() {
-        var headers = new HttpHeaders();
-        headers.set("X-USER-ID", "status-check-user-" + UUID.randomUUID());
-        var entity = new HttpEntity<>(headers);
+        var userId = "status-check-user-" + UUID.randomUUID();
 
         // First, consume one token via real endpoint
-        restTemplate.exchange("/api/orders", HttpMethod.GET, entity, String.class);
+        restTestClient.get().uri("/api/orders")
+                .header("X-USER-ID", userId)
+                .exchange()
+                .expectStatus().isOk();
 
         // Status endpoint should reflect remaining without consuming further
-        var statusBefore = restTemplate.exchange("/api/rate-limit/status?profile=strict", HttpMethod.GET, entity, String.class);
-        assertThat(statusBefore.getStatusCode()).isEqualTo(HttpStatus.OK);
-
-        var statusAfter = restTemplate.exchange("/api/rate-limit/status?profile=strict", HttpMethod.GET, entity, String.class);
-        assertThat(statusAfter.getStatusCode()).isEqualTo(HttpStatus.OK);
-
-        // Body should contain remaining and limit fields
-        assertThat(statusBefore.getBody()).contains("remaining");
-        assertThat(statusBefore.getBody()).contains("\"limit\":5");
+        for (int i = 0; i < 2; i++) {
+            restTestClient.get().uri("/api/rate-limit/status?profile=strict")
+                    .header("X-USER-ID", userId)
+                    .exchange()
+                    .expectStatus().isOk()
+                    .expectBody()
+                    .jsonPath("$.profile").isEqualTo("strict")
+                    .jsonPath("$.limit").isEqualTo(5)
+                    .jsonPath("$.remaining").exists();
+        }
     }
 }

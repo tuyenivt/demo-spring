@@ -6,9 +6,9 @@ A Spring Boot application demonstrating distributed rate limiting using Redis an
 
 ## Tech Stack
 
-- Spring Boot with AOP
-- Redis (Lettuce client)
-- Bucket4j (token bucket algorithm)
+- Java 25, Spring Boot 4.1 with AspectJ (`spring-boot-starter-aspectj`)
+- Redis (Lettuce client, `spring.data.redis.*`)
+- Bucket4j 8.20 (token bucket algorithm, `bucket4j_jdk17-lettuce`)
 - Testcontainers (integration testing)
 - Lombok
 
@@ -36,8 +36,8 @@ rate-limiting/
 │       ├── RedisBucketConfig.java                  # Redis/Bucket4j config
 │       └── UserContext.java                        # User/IP identification
 ├── src/test/java/com/example/ratelimiting/
-│   ├── RateLimitIntegrationTest.java               # Testcontainers + concurrent test
-│   ├── TestcontainersConfiguration.java
+│   ├── RateLimitIntegrationTest.java               # Testcontainers + RestTestClient + concurrent test
+│   ├── TestcontainersConfiguration.java            # Redis GenericContainer as @ServiceConnection bean
 │   └── ratelimit/
 │       ├── UserContextTest.java                    # Unit tests for identifier resolution
 │       ├── RateLimitServiceTest.java               # Unit tests for token-bucket logic
@@ -125,7 +125,8 @@ rate-limiting:
       strategy: INTERVALLY
 ```
 
-Redis pool: max-active=5, max-idle=5, max-wait=2s.
+Redis connection: `spring.data.redis.host`/`port` (env `REDIS_HOST`/`REDIS_PORT`, default `localhost:6379`), database 0, 60s timeout.
+`RedisBucketConfig` opens a dedicated Lettuce `StatefulRedisConnection<String, byte[]>` from the Boot-managed `LettuceConnectionFactory` for Bucket4j's CAS-based proxy manager.
 
 ## API Endpoints
 
@@ -164,9 +165,9 @@ Run with Testcontainers (requires Docker):
 ./gradlew :rate-limiting:test
 ```
 
-Tests cover:
+`@SpringBootTest(RANDOM_PORT)` + `@AutoConfigureRestTestClient`. Tests cover:
 - Requests within limit allowed
-- Requests exceeding limit rejected (429 + Retry-After)
+- Requests exceeding limit rejected (429 + Retry-After + JSON error body)
 - IP-based fallback rate limiting
 - Rate-limit response headers
 - No-limit endpoint behaviour
@@ -191,12 +192,14 @@ Redis key prefixes:
 ## Dependencies
 
 ```gradle
-implementation 'org.springframework.boot:spring-boot-starter-aop'
+implementation 'org.springframework.boot:spring-boot-starter-aspectj'
 implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-implementation 'org.springframework.boot:spring-boot-starter-web'
-implementation 'com.bucket4j:bucket4j_jdk17-lettuce:8.16.1'
+implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+implementation 'com.bucket4j:bucket4j_jdk17-lettuce:8.20.0'
+testImplementation 'org.springframework.boot:spring-boot-starter-aspectj-test'
+testImplementation 'org.springframework.boot:spring-boot-starter-data-redis-test'
+testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-testImplementation 'org.testcontainers:junit-jupiter'
 ```
 
 ## Missing Demos
