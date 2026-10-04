@@ -9,8 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
+import org.springframework.resilience.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,9 +45,10 @@ public class UserService {
      * Regular read: Uses reader datasource for scalability.
      */
     @Retryable(
-            retryFor = {SQLException.class, DataAccessException.class},
-            maxAttempts = 5,
-            backoff = @Backoff(delay = 1000, multiplier = 2)
+            includes = {SQLException.class, DataAccessException.class},
+            maxRetries = 4,
+            delay = 1000,
+            multiplier = 2
     )
     public Optional<User> findById(Long id) {
         return userRepository.findById(id);

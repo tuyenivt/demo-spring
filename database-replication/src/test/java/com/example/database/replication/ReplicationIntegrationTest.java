@@ -5,26 +5,28 @@ import com.example.database.replication.dto.UpdateUserRequest;
 import com.example.database.replication.dto.UserResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.MySQLContainer;
+import org.springframework.test.web.servlet.client.RestTestClient;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.mysql.MySQLContainer;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureRestTestClient
 class ReplicationIntegrationTest {
 
     @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.4"))
+    static MySQLContainer mysql = new MySQLContainer("mysql:8.4")
             .withDatabaseName("testdb")
             .withUsername("test")
             .withPassword("test");
@@ -38,146 +40,158 @@ class ReplicationIntegrationTest {
         registry.add("spring.datasource.reader.jdbc-url", mysql::getJdbcUrl);
         registry.add("spring.datasource.reader.username", mysql::getUsername);
         registry.add("spring.datasource.reader.password", mysql::getPassword);
-        registry.add("spring.datasource.liquibase.jdbc-url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.liquibase.username", mysql::getUsername);
-        registry.add("spring.datasource.liquibase.password", mysql::getPassword);
+        registry.add("spring.liquibase.url", mysql::getJdbcUrl);
+        registry.add("spring.liquibase.user", mysql::getUsername);
+        registry.add("spring.liquibase.password", mysql::getPassword);
     }
 
     @Autowired
-    private TestRestTemplate restTemplate;
+    private RestTestClient restTestClient;
+
+    private UserResponse createUser(String name, String email) {
+        return restTestClient.post().uri("/users")
+                .body(new CreateUserRequest(name, email))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(UserResponse.class)
+                .returnResult()
+                .getResponseBody();
+    }
 
     @Test
     void shouldCreateAndReadUser() {
         // Create user
-        var request = new CreateUserRequest("John Doe", "john@example.com");
-        var createResponse = restTemplate.postForEntity("/users", request, UserResponse.class);
+        var created = createUser("John Doe", "john@example.com");
 
-        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(createResponse.getBody()).isNotNull();
-        assertThat(createResponse.getBody().name()).isEqualTo("John Doe");
-        assertThat(createResponse.getBody().email()).isEqualTo("john@example.com");
-        assertThat(createResponse.getBody().id()).isNotNull();
+        assertThat(created).isNotNull();
+        assertThat(created.name()).isEqualTo("John Doe");
+        assertThat(created.email()).isEqualTo("john@example.com");
+        assertThat(created.id()).isNotNull();
 
         // Read user by ID
-        var userId = createResponse.getBody().id();
-        var getResponse = restTemplate.getForEntity("/users/" + userId, UserResponse.class);
-
-        assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(getResponse.getBody()).isNotNull();
-        assertThat(getResponse.getBody().id()).isEqualTo(userId);
-        assertThat(getResponse.getBody().name()).isEqualTo("John Doe");
+        restTestClient.get().uri("/users/{id}", created.id())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(UserResponse.class)
+                .isEqualTo(created);
     }
 
     @Test
     void shouldReturnNotFoundForNonExistentUser() {
-        var response = restTemplate.getForEntity("/users/99999", UserResponse.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        restTestClient.get().uri("/users/99999")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 
     @Test
     void shouldValidateCreateUserRequest() {
         // Missing name and invalid email
-        var request = new CreateUserRequest("", "invalid-email");
-        var response = restTemplate.postForEntity("/users", request, String.class);
+        restTestClient.post().uri("/users")
+                .body(new CreateUserRequest("", "invalid-email"))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("VALIDATION_ERROR");
+    }
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    @Test
+    void shouldReturnConflictForDuplicateEmail() {
+        createUser("First", "duplicate@example.com");
+
+        restTestClient.post().uri("/users")
+                .body(new CreateUserRequest("Second", "duplicate@example.com"))
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.CONFLICT)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("DUPLICATE_ENTRY");
     }
 
     @Test
     void shouldDeleteUser() {
         // Create user first
-        var request = new CreateUserRequest("ToDelete", "delete@example.com");
-        var createResponse = restTemplate.postForEntity("/users", request, UserResponse.class);
-        var userId = createResponse.getBody().id();
+        var userId = createUser("ToDelete", "delete@example.com").id();
 
         // Delete user
-        restTemplate.delete("/users/" + userId);
+        restTestClient.delete().uri("/users/{id}", userId)
+                .exchange()
+                .expectStatus().isNoContent();
 
         // Verify user is gone
-        var getResponse = restTemplate.getForEntity("/users/" + userId, UserResponse.class);
-        assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        restTestClient.get().uri("/users/{id}", userId)
+                .exchange()
+                .expectStatus().isNotFound();
     }
 
     @Test
     void shouldFindUsersByName() {
         // Create users with same name
-        restTemplate.postForEntity("/users", new CreateUserRequest("SameName", "same1@example.com"), UserResponse.class);
-        restTemplate.postForEntity("/users", new CreateUserRequest("SameName", "same2@example.com"), UserResponse.class);
+        createUser("SameName", "same1@example.com");
+        createUser("SameName", "same2@example.com");
 
         // Find by name
-        var response = restTemplate.getForEntity("/users/name/SameName", UserResponse[].class);
+        var users = restTestClient.get().uri("/users/name/SameName")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(new ParameterizedTypeReference<List<UserResponse>>() {
+                })
+                .returnResult()
+                .getResponseBody();
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).hasSizeGreaterThanOrEqualTo(2);
+        assertThat(users).hasSizeGreaterThanOrEqualTo(2)
+                .extracting(UserResponse::name)
+                .containsOnly("SameName");
     }
 
     @Test
     void shouldUpdateUser() {
         // Create user first
-        var createRequest = new CreateUserRequest("Original Name", "original@example.com");
-        var createResponse = restTemplate.postForEntity("/users", createRequest, UserResponse.class);
-
-        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        var userId = createResponse.getBody().id();
+        var userId = createUser("Original Name", "original@example.com").id();
+        var expected = new UserResponse(userId, "Updated Name", "updated@example.com");
 
         // Update user
-        var updateRequest = new UpdateUserRequest("Updated Name", "updated@example.com");
-        var updateResponse = restTemplate.exchange(
-                "/users/" + userId,
-                HttpMethod.PUT,
-                new HttpEntity<>(updateRequest),
-                UserResponse.class
-        );
-
-        assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(updateResponse.getBody()).isNotNull();
-        assertThat(updateResponse.getBody().id()).isEqualTo(userId);
-        assertThat(updateResponse.getBody().name()).isEqualTo("Updated Name");
-        assertThat(updateResponse.getBody().email()).isEqualTo("updated@example.com");
+        restTestClient.put().uri("/users/{id}", userId)
+                .body(new UpdateUserRequest("Updated Name", "updated@example.com"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(UserResponse.class)
+                .isEqualTo(expected);
 
         // Verify update persisted
-        var getResponse = restTemplate.getForEntity("/users/" + userId, UserResponse.class);
-        assertThat(getResponse.getBody().name()).isEqualTo("Updated Name");
-        assertThat(getResponse.getBody().email()).isEqualTo("updated@example.com");
+        restTestClient.get().uri("/users/{id}", userId)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(UserResponse.class)
+                .isEqualTo(expected);
     }
 
     @Test
     void shouldReturnNotFoundWhenUpdatingNonExistentUser() {
-        var updateRequest = new UpdateUserRequest("Not Found", "notfound@example.com");
-        var response = restTemplate.exchange(
-                "/users/99999",
-                HttpMethod.PUT,
-                new HttpEntity<>(updateRequest),
-                String.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        restTestClient.put().uri("/users/99999")
+                .body(new UpdateUserRequest("Not Found", "notfound@example.com"))
+                .exchange()
+                .expectStatus().isNotFound();
     }
 
     @Test
     void shouldReturnNotFoundWhenDeletingNonExistentUser() {
-        restTemplate.delete("/users/99999");
-        // Note: RestTemplate.delete() doesn't return response, so we verify via a GET
-        var response = restTemplate.getForEntity("/users/99999", UserResponse.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        restTestClient.delete().uri("/users/99999")
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("NOT_FOUND");
     }
 
     @Test
     void shouldValidateUpdateUserRequest() {
         // Create user first
-        var createRequest = new CreateUserRequest("Test User", "test@example.com");
-        var createResponse = restTemplate.postForEntity("/users", createRequest, UserResponse.class);
-        var userId = createResponse.getBody().id();
+        var userId = createUser("Test User", "test@example.com").id();
 
         // Try to update with invalid data
-        var invalidUpdateRequest = new UpdateUserRequest("", "invalid-email");
-        var response = restTemplate.exchange(
-                "/users/" + userId,
-                HttpMethod.PUT,
-                new HttpEntity<>(invalidUpdateRequest),
-                String.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        restTestClient.put().uri("/users/{id}", userId)
+                .body(new UpdateUserRequest("", "invalid-email"))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("VALIDATION_ERROR");
     }
 }

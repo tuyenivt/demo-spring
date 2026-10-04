@@ -44,12 +44,12 @@ Spring Boot application demonstrating **MySQL master-slave replication** with re
 
 - Single unified `UserRepository` (no separate read/write repositories)
 - `RoutingDataSource` extends `AbstractRoutingDataSource` for dynamic routing
-- Liquibase runs **only on master** with separate root credentials for DDL operations
+- Liquibase runs **only on master** with separate root credentials for DDL operations (Boot auto-configuration via `spring.liquibase.url/user/password`)
 - Application uses dedicated `app` user with DML-only privileges (SELECT, INSERT, UPDATE, DELETE)
 - GTID replication ensures consistency across failovers
 - Input validation with `@Valid` and Bean Validation annotations (includes @Size constraints)
 - Spring Boot Actuator provides health indicators for both datasources at `/actuator/health`
-- Spring Retry enabled with `@EnableRetry`; `findById` uses `@Retryable` (maxAttempts=5, exponential backoff) for `SQLException`/`DataAccessException`
+- Spring Framework resilience enabled with `@EnableResilientMethods`; `findById` uses `@Retryable` (maxRetries=4, exponential backoff from 1s) for `SQLException`/`DataAccessException`
 - OpenAPI documentation available at `/swagger-ui.html`
 - `GlobalExceptionHandler`: `EntityNotFoundException` → 404, `DataIntegrityViolationException` → 409, `MethodArgumentNotValidException` → 400
 
@@ -130,7 +130,7 @@ public class UserService {
 ## Tests
 
 - **`DataSourceRoutingTest`** (7 unit tests, no Spring context): default→READER, runWithWriter, callWithWriter, revert-after-scope, nested scopes, thread isolation, revert-on-exception
-- **`ReplicationIntegrationTest`** (9 tests, `@SpringBootTest` + single Testcontainers MySQL for both writer and reader): create+read, not-found GET, validation on create, delete, find-by-name, update, not-found update, not-found delete, validation on update
+- **`ReplicationIntegrationTest`** (10 tests, `@SpringBootTest` + `RestTestClient` + single Testcontainers MySQL for both writer and reader): create+read, not-found GET, validation on create, duplicate email (409), delete, find-by-name, update, not-found update, not-found delete, validation on update
 
 ## Gotchas
 

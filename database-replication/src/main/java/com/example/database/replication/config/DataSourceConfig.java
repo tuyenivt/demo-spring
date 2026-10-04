@@ -4,11 +4,10 @@ import com.example.database.replication.routing.DataSourceType;
 import com.example.database.replication.routing.RoutingDataSource;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManagerFactory;
-import liquibase.integration.spring.SpringLiquibase;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.DataSourceBuilder;
-import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
+import org.springframework.boot.jpa.EntityManagerFactoryBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -46,12 +45,6 @@ public class DataSourceConfig {
     @Bean
     @ConfigurationProperties("spring.datasource.reader")
     public DataSource readerDataSource() {
-        return DataSourceBuilder.create().type(HikariDataSource.class).build();
-    }
-
-    @Bean
-    @ConfigurationProperties("spring.datasource.liquibase")
-    public DataSource liquibaseDataSource() {
         return DataSourceBuilder.create().type(HikariDataSource.class).build();
     }
 
@@ -95,13 +88,5 @@ public class DataSourceConfig {
             @Qualifier("entityManagerFactory") EntityManagerFactory entityManagerFactory
     ) {
         return new JpaTransactionManager(entityManagerFactory);
-    }
-
-    @Bean
-    public SpringLiquibase liquibase(@Qualifier("liquibaseDataSource") DataSource dataSource) {
-        var liquibase = new SpringLiquibase();
-        liquibase.setChangeLog("classpath:db/changelog/db.changelog-master.xml");
-        liquibase.setDataSource(dataSource);
-        return liquibase;
     }
 }

@@ -28,7 +28,7 @@ This project showcases how to implement database replication in a Spring applica
 ## Tech Stack
 
 - Java 25+
-- Spring Boot 3.x
+- Spring Boot 4.1
 - Spring Data JPA
 - MySQL 8.4 (GTID replication)
 - Liquibase (schema migrations)
@@ -136,7 +136,7 @@ GTID (Global Transaction Identifier) provides:
 
 The application demonstrates proper security practices:
 - **Separate Users**: Application uses `app` user with DML-only privileges (SELECT, INSERT, UPDATE, DELETE)
-- **Liquibase Access**: Schema migrations use `root` with DDL privileges, isolated from application runtime
+- **Liquibase Access**: Schema migrations use `root` with DDL privileges via `spring.liquibase.url/user/password`, isolated from application runtime
 - **Least Privilege**: Each component has only the minimum required permissions
 
 ## API Reference
